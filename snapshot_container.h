@@ -6,9 +6,4 @@
  **********************************************************************************************************************/
 
 #include "snapshot_slice.h"
-
-namespace snapshot_container
-{
-}
-
 #include "snapshot_container_impl.h"
