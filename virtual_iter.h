@@ -126,7 +126,7 @@ namespace virtual_iter
         // of iteration via std::vector<int>::iterator when grabbing ~ 1000 elements at a time.
         size_t copy(T* resultPtr, size_t maxItems, const fwd_iter<T, MemSize>& endPos) const
         {
-            return m_impl->copy (resultPtr, maxItems, m_iterMem, endPos.m_iterMem);
+            return m_impl->copy (resultPtr, maxItems, m_iter_mem, endPos.m_iter_mem);
         }
 
         // This function exists as a workaround for situations where copying an object is too expensive.
@@ -134,17 +134,17 @@ namespace virtual_iter
         // be better to visit than to copy.
         void visit(const fwd_iter<T, MemSize>& endItr, std::function<bool(const value_type&)>& f) const
         {
-            m_impl->visit (m_iterMem, endItr.m_iterMem, f);
+            m_impl->visit (m_iter_mem, endItr.m_iter_mem, f);
         }
 
     private:
 
         void* mem() const
-        {return m_iterMem;}
+        {return m_iter_mem;}
 
         std::shared_ptr<_fwd_iter_impl_base<T, MemSize>> m_impl;
         // This is guaranteed 8 byte aligned.  This should be large enough to map most common iter types into.
-        mutable size_t m_iterMem[MemSize / 8];
+        mutable size_t m_iter_mem[MemSize / 8];
 
     };
 

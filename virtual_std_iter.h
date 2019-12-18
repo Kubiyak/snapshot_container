@@ -74,84 +74,83 @@ namespace virtual_iter
         {
             _IterStore* iterStore =
                     reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (obj));
-            iterStore->~_IterStore ();
+            iterStore->~_IterStore();
         }
 
         bool equals(const iterator_type& lhs, const iterator_type& rhs) const override
         {
-            auto lhsIterStore = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (
+            auto lhs_store = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (
                     lhs));
-            auto rhsIterStore = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (
+            auto rhs_store = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (
                     rhs));
 
-            return lhsIterStore->m_itr == rhsIterStore->m_itr;
+            return lhs_store->m_itr == rhs_store->m_itr;
         }
 
         ssize_t distance(const iterator_type& lhs, const iterator_type& rhs) const override
         {
-            auto lhsStore = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (lhs));
-            auto rhsStore = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (rhs));
+            auto lhs_store = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (lhs));
+            auto rhs_store = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (rhs));
 
-            return lhsStore->m_itr - rhsStore->m_itr;
+            return lhs_store->m_itr - rhs_store->m_itr;
         }
 
         virtual iterator_type plus(const iterator_type& lhs, ssize_t offset) const override
         {
-            auto iterStore = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (lhs));
+            auto iter_store = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (lhs));
             return iterator_type (std_fwd_iter_impl<Container, IterMemSize> (),
-                                  iterStore->m_itr + offset);
+                                  iter_store->m_itr + offset);
         }
 
         virtual const value_type* pointer(const iterator_type& arg) const override
         {
-            auto iterStore = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (arg));
-            return (iterStore->m_itr).operator-> ();
+            auto iter_store = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (arg));
+            return (iter_store->m_itr).operator-> ();
         }
 
         virtual const value_type& reference(const iterator_type& arg) const override
         {
-            auto iterStore = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (arg));
-            return (iterStore->m_itr).operator* ();
+            auto iter_store = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (arg));
+            return (iter_store->m_itr).operator* ();
         }
 
 
         // This function should be specialized for the specific type of iterator.  This currently
         // assumes a random access iterator supporting  a constant time distance (subtraction) op.
-        virtual size_t copy(value_type* resultPtr, size_t maxItems, void* iter, void* endIter) const override
+        virtual size_t copy(value_type* result_ptr, size_t max_items, void* iter, void* end_iter) const override
         {
-            auto lhsIter = reinterpret_cast<_IterStore*>(iter);
-            auto rhsIter = reinterpret_cast<_IterStore*>(endIter);
-            ssize_t distanceToEnd = rhsIter->m_itr - lhsIter->m_itr;
+            auto lhs_iter = reinterpret_cast<_IterStore*>(iter);
+            auto rhs_iter = reinterpret_cast<_IterStore*>(end_iter);
+            ssize_t distance_to_end = rhs_iter->m_itr - lhs_iter->m_itr;
 
-            if (distanceToEnd <= 0)
+            if (distance_to_end <= 0)
                 return 0;
 
-            if (distanceToEnd < maxItems)
-                maxItems = (size_t) distanceToEnd;
+            if (distance_to_end < max_items)
+                max_items = (size_t) distance_to_end;
 
-            size_t copyCount = 0;
-            while (copyCount < maxItems)
+            size_t copy_count = 0;
+            while (copy_count < max_items)
             {
-                *resultPtr++ = *lhsIter->m_itr++;
-                ++copyCount;
+                *result_ptr++ = *lhs_iter->m_itr++;
+                ++copy_count;
             }
-
-            return copyCount;
+            return copy_count;
         }
 
-        virtual void visit(void* iter, void* endIter, std::function<bool(const value_type&)>& f) const override
+        virtual void visit(void* iter, void* end_iter, std::function<bool(const value_type&)>& f) const override
         {
-            auto lhsIter = reinterpret_cast<_IterStore*>(iter);
-            auto rhsIter = reinterpret_cast<_IterStore*>(endIter);
+            auto lhs_iter = reinterpret_cast<_IterStore*>(iter);
+            auto rhs_iter = reinterpret_cast<_IterStore*>(end_iter);
 
-            typename Container::difference_type diff = rhsIter->m_itr - lhsIter->m_itr;
+            typename Container::difference_type diff = rhs_iter->m_itr - lhs_iter->m_itr;
 
             for (size_t i = 0; i < diff; ++i)
             {
-                if (!f (*lhsIter->m_itr))
+                if (!f (*lhs_iter->m_itr))
                     return;
 
-                ++lhsIter->m_itr;
+                ++lhs_iter->m_itr;
             }
         }
     };

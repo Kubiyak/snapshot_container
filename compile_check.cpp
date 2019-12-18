@@ -13,7 +13,7 @@ int main() {
     auto store = snapshot_container::deque_storage<size_t>::create();
     std::vector<size_t> s(10, 1);
 
-    virtual_iter::std_fwd_iter_impl<std::vector<size_t>, snapshot_container::storage_base<size_t>::IterMemSize> impl;
+    virtual_iter::std_fwd_iter_impl<std::vector<size_t>, snapshot_container::storage_base<size_t>::iter_mem_size> impl;
     snapshot_container::storage_base<size_t>::fwd_iter_type start(impl, s.begin());
     snapshot_container::storage_base<size_t>::fwd_iter_type end(impl, s.end());
 
