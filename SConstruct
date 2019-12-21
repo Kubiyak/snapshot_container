@@ -1,5 +1,5 @@
 header_files = ['virtual_iter.h', 'virtual_std_iter.h',
-                'snapshot_container.h', 'snapshot_slice.h', 'snapshot_storage_registry.h',
+                'snapshot_iterator.h', 'snapshot_slice.h',
                 'snapshot_storage.h']
 
 optimized_env = Environment(CXX="g++-8", CXXFLAGS="--std=c++17 -O2")

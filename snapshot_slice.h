@@ -21,17 +21,18 @@ namespace snapshot_container
 
     // A slice maintains a valid index range over a storage element.
     template <typename T>
-    class slice
+    class _slice
     {
     public:
 
         typedef typename storage_base<T>::shared_base_t shared_base_t;
         typedef typename storage_base<T>::fwd_iter_type fwd_iter_type;
-
-        slice(shared_base_t &storage, size_t start_index, size_t end_index = storage_base<T>::npos):
+                
+        _slice(shared_base_t &storage, size_t start_index, size_t end_index = storage_base<T>::npos):
             m_start_index(start_index),
             m_end_index(end_index),
-            m_storage(storage)
+            m_storage(storage),
+            m_modifiable(end_index == storage_base<T>::npos)
         {
             if (m_end_index == storage_base<T>::npos)
                 m_end_index = m_storage->size();
@@ -39,25 +40,29 @@ namespace snapshot_container
 
         // Note that slices work like shared_ptrs on copy construction and assignment.  Call copy to obtain
         // a deep copy.
-        slice(const slice<T>& rhs) = default;
-        slice& operator = (const slice<T>& rhs) = default;
+        _slice(const _slice<T>& rhs) = default;
+        _slice& operator = (const _slice<T>& rhs) = default;
 
-        // Append must not be called on slices not overlapping the end of the storage element.
-        // The calling code should verify that before calling append.
+        // Append must only be called on extensible slices
         void append(const T& t)
         {
             m_storage->append(t);
             m_end_index += 1;
         }
 
-        // Append must not be called on slices not overlapping the end of the storage element.
+        // Must only be called on extensible slices
         void append(fwd_iter_type& start_pos, const fwd_iter_type& end_pos)
         {
             m_storage->append(start_pos, end_pos);
             m_end_index = m_storage->size();
         }
 
-        slice<T> copy(size_t start_index, size_t end_index = storage_base<T>::npos) const
+        bool is_modifiable () const
+        {
+            return m_modifiable;
+        }
+                
+        _slice<T> copy(size_t start_index, size_t end_index = storage_base<T>::npos) const
         {
             // This is how to obtain an empty copy (i.e. an empty slice based on the same impl
             // as this slice.
@@ -65,7 +70,7 @@ namespace snapshot_container
                 start_index = end_index;
 
             shared_base_t storage_copy = m_storage->copy(start_index, end_index);
-            return slice<T>(storage_copy, 0, end_index - start_index);
+            return _slice<T>(storage_copy, 0, end_index - start_index);
         }
 
         // Insert must not be called on slices not co-terminus with the end of the storage element.
@@ -94,11 +99,6 @@ namespace snapshot_container
             return m_end_index - m_start_index;
         }
 
-        void update(size_t index, const T& newValue)
-        {
-            m_storage->update(m_start_index + index, newValue);
-        }
-
         shared_base_t& operator->() {return m_storage;}
 
         fwd_iter_type begin() {return m_storage->iterator(m_start_index);}
@@ -113,9 +113,18 @@ namespace snapshot_container
             return m_storage->operator[](index + m_start_index);
         }
 
+        // The higher level abstraction will need to track ref counts to slices and only permit this operation
+        // directly when this ref count is 1.  When it is a higher value, the higher level container will need to
+        // effect a copy operation and only call this on a newly created slice after the copy.
+        T& operator [] (size_t index)
+        {
+            return m_storage->operator[](index + m_start_index);
+        }
+        
     private:
         size_t m_start_index;
         size_t m_end_index;
         shared_base_t m_storage;
+        bool m_modifiable; // must be created w/ end index = endpos to be modifiable
     };
 }

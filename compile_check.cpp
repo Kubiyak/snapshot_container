@@ -27,5 +27,8 @@ int main() {
         fprintf (stdout, "%ld\n", *startItr);
     }
 
+    auto slice_storage = snapshot_container::deque_storage<size_t>::create();
+    auto slice = snapshot_container::_slice<size_t>(slice_storage, 0);
+    
     return 0;
 }

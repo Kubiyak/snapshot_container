@@ -36,12 +36,10 @@ namespace snapshot_container
         virtual void remove(size_t index) = 0;
 
         virtual size_t size() const = 0;
-
-        virtual void update(size_t index, const value_type&) = 0;
-
+        
         virtual const value_type& operator[](size_t index) const = 0;
 
-        virtual value_type operator[](size_t index) = 0;
+        virtual value_type& operator[](size_t index) = 0;
 
         virtual ~storage_base()
         {}
@@ -60,6 +58,12 @@ namespace snapshot_container
         {}
     };
 
+    
+    // This is just an example of what an implementation of storage_base<T> can look like.
+    // In general, it could be just about anything supporting the storage_base<T> interface. For example it can be
+    // loading and writing records to disk or doing the same in some shared memory segment. The primary assumption made
+    // by the higher level abstractions is that appending records to the storage is efficient. Inserting to the middle
+    // is permissible.
     template <typename T>
     class deque_storage : public storage_base<T>
     {
@@ -109,13 +113,10 @@ namespace snapshot_container
         size_t size() const override
         {return m_data.size ();}
 
-        void update(size_t index, const T& value) override
-        {m_data[index] = value;}
-
         const T& operator[](size_t index) const override
         {return m_data[index];}
 
-        T operator[](size_t index) override
+        T& operator[](size_t index) override
         {return m_data[index];}
 
         const fwd_iter_type begin() const override
@@ -200,5 +201,24 @@ namespace snapshot_container
 
     template <typename T>
     virtual_iter::std_fwd_iter_impl<std::deque<T>, deque_storage<T>::iter_mem_size> deque_storage<T>::_iter_impl;
+
+    // Storage creation may need to be stateful. To support this, the higher level abstraction takes a storage creator
+    // object as an arg on which operator () is called to create storage. This is a wrapper around deque_storage
+    // supporting this usage
+    template <typename T>
+    struct deque_storage_creator
+    {
+        typedef typename deque_storage<T>::shared_base_t shared_base_t;
+        shared_base_t operator() ()
+        {
+            return shared_base_t(new deque_storage<T>);
+        }
+        
+        template <typename IterType>
+        shared_base_t operator() (IterType start, IterType end)
+        {
+            return shared_base_t(new deque_storage<T>(start, end));
+        }
+    };    
 }
 
