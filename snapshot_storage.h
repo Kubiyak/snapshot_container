@@ -194,9 +194,9 @@ namespace snapshot_container
 
     template <typename T>
     template <typename InputItr>
-    typename deque_storage<T>::shared_base_t deque_storage<T>::create(InputItr startPos, InputItr endPos)
+    typename deque_storage<T>::shared_base_t deque_storage<T>::create(InputItr start_pos, InputItr end_pos)
     {
-        return shared_base_t (new deque_storage<T> (startPos, endPos));
+        return shared_base_t (new deque_storage<T> (start_pos, end_pos));
     }
 
     template <typename T>
@@ -221,4 +221,3 @@ namespace snapshot_container
         }
     };    
 }
-

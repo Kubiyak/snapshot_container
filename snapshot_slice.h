@@ -120,6 +120,14 @@ namespace snapshot_container
             return m_storage->operator[](index + m_start_index);
         }
         
+        bool operator == (const _slice<T>& rhs) const
+        {
+            if (this == &rhs)
+                return true;
+            
+            return (m_start_index == rhs.m_start_index && m_end_index == rhs.m_end_index && m_storage == rhs.m_storage);
+        }
+        
         size_t m_start_index;
         size_t m_end_index;
         shared_base_t m_storage;

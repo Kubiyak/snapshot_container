@@ -161,17 +161,26 @@ namespace snapshot_container {
         }
     
         
-        static std::shared_ptr<_iterator_kernel<T,StorageCreator>> create(const StorageCreator& creator)
+        static std::shared_ptr<_iterator_kernel<T, StorageCreator>> create(const StorageCreator& creator)
         {
             return std::make_shared<_iterator_kernel<T,StorageCreator>>(creator);
         }
         
         template <typename IterType>
-        static std::shared_ptr<_iterator_kernel<T,StorageCreator>> create(const StorageCreator& creator, 
+        static std::shared_ptr<_iterator_kernel<T, StorageCreator>> create(const StorageCreator& creator, 
                                                                           IterType begin_pos, IterType end_pos)
         {
-            return std::make_shared<_iterator_kernel<T,StorageCreator>>(creator, begin_pos, end_pos);
+            return std::make_shared<_iterator_kernel<T, StorageCreator>>(creator, begin_pos, end_pos);
         }
+        
+        static std::shared_ptr<_iterator_kernel<T, StorageCreator>> create(const std::shared_ptr<_iterator_kernel<T, StorageCreator>>& rhs)
+        {
+            if (rhs)
+                return std::make_shared<_iterator_kernel<T, StorageCreator>>(*rhs);
+            else
+                throw std::logic_error("Called create with an empty shared pointer");
+        }
+        
         
 #ifndef _SNAPSHOTCONTAINER_TEST        
     private:
