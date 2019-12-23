@@ -158,15 +158,15 @@ namespace snapshot_container
         template <typename InputIter>
         static shared_base_t create(InputIter start_pos, InputIter end_pos);
 
-    private:
-
         deque_storage() {}
         deque_storage(const deque_storage<T>& rhs) = default;
 
         template <typename InputIter>
         deque_storage(InputIter start_pos, InputIter end_pos);
-
+            
         static virtual_iter::std_fwd_iter_impl<std::deque<value_type>, iter_mem_size> _iter_impl;
+
+    private:
         std::deque<T> m_data;
     };
 

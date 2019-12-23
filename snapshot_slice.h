@@ -28,11 +28,10 @@ namespace snapshot_container
         typedef typename storage_base<T>::shared_base_t shared_base_t;
         typedef typename storage_base<T>::fwd_iter_type fwd_iter_type;
                 
-        _slice(shared_base_t &storage, size_t start_index, size_t end_index = storage_base<T>::npos):
+        _slice(const shared_base_t &storage, size_t start_index, size_t end_index = storage_base<T>::npos):
             m_start_index(start_index),
             m_end_index(end_index),
-            m_storage(storage),
-            m_modifiable(end_index == storage_base<T>::npos)
+            m_storage(storage)
         {
             if (m_end_index == storage_base<T>::npos)
                 m_end_index = m_storage->size();
@@ -59,7 +58,7 @@ namespace snapshot_container
 
         bool is_modifiable () const
         {
-            return m_modifiable;
+            return (m_start_index == 0 && m_end_index == m_storage->size() && m_storage.use_count() == 1);
         }
                 
         _slice<T> copy(size_t start_index, size_t end_index = storage_base<T>::npos) const
@@ -121,10 +120,8 @@ namespace snapshot_container
             return m_storage->operator[](index + m_start_index);
         }
         
-    private:
         size_t m_start_index;
         size_t m_end_index;
         shared_base_t m_storage;
-        bool m_modifiable; // must be created w/ end index = endpos to be modifiable
     };
 }

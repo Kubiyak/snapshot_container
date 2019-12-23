@@ -1,182 +1,195 @@
-/***********************************************************************************************************************
- * snapshot_container:
- * A temporal sequentially accessible container type.
- * Released under the terms of the MIT license:
- * https://opensource.org/licenses/MIT
- **********************************************************************************************************************/
 #include "snapshot_slice.h"
-#include <vector>
-#include <exception>
+#include <memory>
+#include <tuple>
+#include <algorithm>
 
-class snapshot_container
-{
-    
-    template <typename T, typename StorageCreator>
-    struct _kernel
-    {   
-        static size_t npos = size_t(-1);
-        using typename storage_base<T>::shared_base_t;
+namespace snapshot_container {
+
+    template<typename T, typename StorageCreator>
+    class _iterator_kernel : public std::enable_shared_from_this<_iterator_kernel<T,StorageCreator>> {
+    public:
+        // Implementation details for the iterator type for snapshot_container. Must be created via 
+        // shared ptr. Both the container type and iterators for the container will keep a shared ptr to iterator_kernel.
+        static constexpr size_t npos = 0xFFFFFFFFFFFFFFFF;
         typedef StorageCreator storage_creator_t;
+        typedef _slice<T> slice_t;
         
-        _kernel(storage_creator_t&& storage_creator):
-            m_last_index_lookup(0),
-            m_last_indices_pos(0),
-            m_storage_creator(storage_creator)
+        struct slice_point
         {            
-            m_slices.push_back(_Slice(m_storage_creator(), 0));
+            slice_point(size_t slice, size_t index):
+            m_slice(slice),
+            m_index(index)
+            {                
+            }
+            
+            size_t m_slice;
+            size_t m_index;
+            bool valid() const { return m_slice != npos;}
+            size_t slice() const { return m_slice; }
+            size_t index() const { return m_index; }
+        };
+        
+        _iterator_kernel(const storage_creator_t& storage_creator) :
+        m_storage_creator(std::forward(storage_creator))
+        {
+            m_slices.push_back(slice_t(m_storage_creator(), 0));
             m_indices.push_back(0);
         }
         
-        template <typename IterType>
-        _kernel(IterType begin, IterType end, storage_creator_t&& storage_creator):
-            m_last_index_lookup(0),
-            m_last_indices_pos(0),
+        template <typename IteratorType>
+        _iterator_kernel(const storage_creator_t& storage_creator, IteratorType begin_pos, IteratorType end_pos):
             m_storage_creator(storage_creator)
         {
-            m_slices.push_back(_Slice(m_storage_creator(begin, end), 0));
+            m_slices.push_back(slice_t(m_storage_creator(begin_pos, end_pos), 0));
             m_indices.push_back(m_slices[0].size());
         }
+
+        _iterator_kernel(const _iterator_kernel& rhs) = default;
+        _iterator_kernel& operator= (const _iterator_kernel& rhs) = default;
         
-        std::tuple<_Slice, size_t> _cow_ops(user_requested_index, slice_index)
+        // Perform copy on write actions on the specified slice.
+        // Returns newly created slice index in m_slices and index within that slice corresponding to index in the original slice.
+        slice_point cow_ops(const slice_point& cow_point)
         {
-            auto max_index = m_indices[slice_index];
-            auto& slice_to_split = m_slices[slice_index];
-            // If the slice is less than 1024 items just copy it entirely.
-            if (slice_to_split.size() <= 1024)
+            if (cow_point.slice() >= m_slices.size())
             {
-                auto new_slice = slice_to_split.copy(slice_to_split.start_index);
-                m_slices[slice_index] = new_slice;
-                return std::tuple<_Slice, size_t>(new_slice, slice_index);
+                // this is probably an unrecoverable error. It might be better to throw
+                return end();
             }
+        
+            auto& slice = m_slices[cow_point.slice()];
+            if (slice.is_modifiable() && slice.size() < 32)
+            {
+                return cow_point;
+            }
+            
+            if (slice.size() < 16)
+            {
+                // copy the  slice if it has a relatively small number of elements.
+                auto new_slice = slice.copy(slice.start_index);
+                m_slices[cow_point.slice()] = new_slice;
+                return cow_point;
+            }
+            
+
+            if (slice.start_index + slice.size()/2 > cow_point.index())
+            {
+                if (cow_point.index() == slice.start_index && cow_point.slice() != 0 && 
+                    m_slices[cow_point.slice() - 1].is_modifiable())
+                {
+                    return cow_point(cow_point.slice() - 1, m_slices[cow_point.slice() - 1].end_index);
+                }
+                
+                auto items_to_copy = cow_point.index() - slice.start_index() + 1;
+                auto new_slice = _slice(storage_creator(slice.begin(), slice.begin() + cow_point.index()), 0);
+                m_indices.insert(m_indices.begin() + cow_point.slice() + 1, m_indices[cow_point.slice()]);
+                m_indices[cow_point.slice()] = m_indices[cow_point.slice()] - m_slices[cow_point.slice()].size() + items_to_copy;
+                m_slices.insert(m_slices.begin() + cow_point.slice(), new_slice);
+                return cow_point(cow_point.slice(), items_to_copy);
+            }                        
             else
             {
-                // split slice in 2 for now but consider more strategies for this
-                auto slice_len = slice_to_split.size();
-                auto min_slice_index = m_indices[slice_index] - slice_len;
-                if (user_requested_index <= (min_slice_index + slice_len/2))
+               if (cow_point.index() == slice.end_index && cow_point.slice() != m_slices.size() - 1 && 
+                   m_slices[cow_point.slice() + 1].is_modifiable())
                 {
-                    auto new_slice = slice_to_split.copy(slice_to_split.start_index, slice_to_split.start_index + (slice_len)/2);
-                    slice_to_split.start_index = slice_to_split.start_index + (slice_len/2);
-                    m_slices.insert(m_slices.begin() + slice_index, new_slice);
-                    m_indices.insert(m_indices.begin() + slice_index, m_indices[slice_index] - slice_len/2);
-                    return std::tuple<_Slice, size_t>(new_slice, slice_index);
+                    return cow_point(cow_point.slice() + 1, 0);
+                }
+                
+               auto items_to_copy = slice.end_index - cow_point.index();
+               auto new_slice = _slice(storage_creator(slice.end() - items_to_copy, slice.end()), 0);
+               m_indices.insert(m_indices.begin() + cow_point.slice(), m_indices[cow_point.slice()] - items_to_copy);
+               slice.m_end_index -= items_to_copy;
+               m_slices.insert(m_slices.begin() + cow_point.slice() + 1, new_slice);
+               return slice_point(cow_point.slice() + 1, items_to_copy);
+            }                        
+        }
+        
+        size_t container_index(const slice_point& slice_pos) const
+        {
+            if (m_indices.size() < slice_pos.slice())
+                return m_indices[m_indices.size() - 1];
+            
+            auto slice = m_slices[slice_pos.slice()];
+            auto size_upto_slice = m_indices[slice_pos.slice()];
+            return (size_upto_slice + slice_pos.index() - slice.size());
+        }
+        
+        slice_point slice_index(size_t container_index) const
+        {
+            // Maps index within the kernel to the index of m_slices where that index resides and
+            // the index within that slice. this is the basis of many iterator ops.
+            // Out of bounds index accesses return the end iterator position.
+        
+            // handle some common cases fast
+            if (container_index < m_slices[0].size())
+            {
+                return (slice_point(0, m_slices[0].size() + container_index - m_indices[0]));
+            }
+            else if (m_indices.size() > 1 && container_index >= m_indices[m_indices.size() - 2])
+            {
+                if (container_index < m_indices[m_indices.size() - 1])
+                {
+                    return slice_point(m_indices.size() - 1, 
+                        m_slices[m_indices.size() - 1].size() + container_index - m_indices[m_indices.size() - 1]);
                 }
                 else
                 {
-                    auto new_slice = slice_to_split.copy(slice_to_split.start_index + (slice_len/2), slice_to_split.end_index);
-                    slice_to_split.end_index = slice_to_split.start_index + (slice_len/2);
-                    m_indices.insert(m_indices.begin() + slice_index + 1, m_indices[slice_index]);
-                    m_indices[slice_index] -= slice_len/2;
-                    m_slices.insert(m_slices.begin() + slice_index + 1, new_slice);
-                    return std::tuple<_Slice, size_t>(new_slice, slice_index + 1);                                                                  
+                    return end();
                 }
             }
-        }
-                      
-        size_t _locate_slice_index(size_t index, bool check_refcount)
-        {
-            auto slice_index = 0;
-            m_last_slice = nullptr;
-                                           
-            auto num_slices = m_slices.size();
-            // Todo: switch to binary search if there are more than 8 slices
-            for(; slice_index < num_slices; ++slice_index)
-            {
-                if (m_indices[slice_index] > index)
-                    break;                
-            }
-            
-            if (slice_index == num_slices || m_slices[slice_index].m_end_index < index)
-            {
-                throw std::out_of_range("Out of bounds index into container");
-            }
-
-            auto referenced_slice = nullptr;
-            if ((check_refcount && m_slices[slice_index].m_data.use_count > 1) || not m_slices[slice_index].is_modifiable())
-            {
-                // The slice on which a reference is to be returned is referenced
-                // in a snapshot and must be copied.
-                [referenced_slice, slice_index] = _cow_ops(index, slice_index);          
+            else if(m_indices.size() > 1)
+            {            
+                return _slice_index_binary(container_index);
             }
             else
             {
-                referenced_slice = m_slices[slice_index];
-            }                       
-            return slice_index;
+                return end();
+            }
         }
         
-        template <typename IterType>
-        void insert(size_t index, IterType begin, IterType end)
+        slice_point begin()
         {
-            // The semantics of insert are that the elements are inserted before index.
-            // There are multiple cases to consider depending on the size of the slice
-            // to insert into, whether the slice is referenced in a snapshot etc.
-            if (m_last_slice && m_min_abs_index < index && index <= m_max_abs_index)
-            {
-                if (m_last_slice.m_data.use_count > 1 || not m_slices[slice_index].is_modifiable())
-                {
-                    auto [new_slice, slice_index] = _cow_ops(index, slice_index);
-                    auto max_elems = m_indices[slice_index];
-                    new_slice.insert(index - (max_elems - new_slice.size()), begin, end);
-                    // fix up sizes
-                    
-                }
-            }
+            if (m_indices[0] > 0)
+                return slice_point(0, 0);
             else
-            {
-                
-            }
+                return end();
         }
         
-        // This struct is the basis of a snapshot        
-        T& operator [] (size_t index)
+        slice_point end() const
         {
-            if (m_last_slice && index >= m_min_abs_index && index < m_max_abs_index)
-            {
-                // Note the user is expected to pass a valid index or this will segv
-                return (*m_last_slice)[index - m_min_abs_index];
-            }
-            
-            auto slice_index = _locate_index(index, true);
-            m_last_slice = &m_slices[slice_index];             
-            m_max_abs_index = m_indices[slice_index];
-            m_min_abs_index = m_max_abs_index - m_slice->size();
-            return (*m_last_slice)
+            return slice_point(m_slices.size() - 1, m_slices[m_slices.size() - 1].end_index);
         }
-             
-        // These are helpers to speed up index lookups
-        _Slice* m_last_slice;
-        // These represent the range of the container's indices in m_last_slice
-        size_t m_min_abs_index;
-        size_t m_max_abs_index
-        
-        std::vector<_Slice<T>> m_slices;  
-        std::vector<size_t> m_indices; // Support for indexing when multiple slices exist
-    };
     
-    template <typename StorageCreator>
-    class RWContainer
-    {
-        typedef StorageCreator storage_creator_t;
         
-    public:
-        RWContainer(storage_creator_t&& storage_creator = storage_creator_t()):
-            m_storage_creator(storage_creator),
-            m_kernel(new _kernel)
-        {            
-            m_kernel->m_slices.push_back(_Slice(m_storage_creator(), 0));            
+        static std::shared_ptr<_iterator_kernel<T,StorageCreator>> create(const StorageCreator& creator)
+        {
+            return std::make_shared<_iterator_kernel<T,StorageCreator>>(creator);
         }
         
         template <typename IterType>
-        RWContainer(IterType begin, IterType end, storage_creator_t&& storage_creator = storage_creator_t()):
-            m_storage_creator(storage_creator),
-            m_kernel(new _kernel)
+        static std::shared_ptr<_iterator_kernel<T,StorageCreator>> create(const StorageCreator& creator, 
+                                                                          IterType begin_pos, IterType end_pos)
         {
-            m_kernel->m_slices.push_back(_Slice(m_storage_creator(begin, end), 0));
+            return std::make_shared<_iterator_kernel<T,StorageCreator>>(creator, begin_pos, end_pos);
         }
         
+#ifndef _SNAPSHOTCONTAINER_TEST        
     private:
-        std::shared_ptr<_kernel> m_kernel;
+#endif        
+        
+        slice_point _slice_index_binary(size_t container_index)
+        {
+            auto indices_pos = std::lower_bound(m_indices.begin(), m_indices.end(), container_index);
+            if (indices_pos == m_indices.end())
+                return end();
+            
+            auto slice_index = indices_pos - m_indices.begin();
+            auto& slice = m_slices[slice_index];
+            return slice_point(slice_index, slice.size() + container_index - m_indices[slice_index]);            
+        }
+        
+        std::vector<slice_t> m_slices;
+        std::vector<size_t> m_indices;
         storage_creator_t m_storage_creator;
     };
-};
+}

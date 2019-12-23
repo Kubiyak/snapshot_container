@@ -20,3 +20,11 @@ debug = debug_env.Program('build/debug/snapshot_container_test',
 
 Depends('build/debug/snapshot_container_test', header_files)
 optimized_env.Alias('debug', debug)
+
+
+slice_test_env = Environment(CXX="g++-8", CXXFLAGS="--std=c++17 -g")
+slice_test_env.VariantDir("build/slice_test", "./")
+slice_test = slice_test_env.Program("build/slice_test/slice_test",
+                              ['build/slice_test/test_snapshot_slice.cpp'])
+Depends('build/slice_test/slice_test', header_files)
+slice_test_env.Alias('slice_test', slice_test)
