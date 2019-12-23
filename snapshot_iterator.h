@@ -71,41 +71,43 @@ namespace snapshot_container {
             if (slice.size() < 16)
             {
                 // copy the  slice if it has a relatively small number of elements.
-                auto new_slice = slice.copy(slice.m_start_index);
+                auto new_slice = slice.copy(0);
                 m_slices[cow_point.slice()] = new_slice;
                 return cow_point;
             }
             
 
-            if (slice.m_start_index + slice.size()/2 > cow_point.index())
+            if (slice.size()/2 > cow_point.index())
             {
-                if (cow_point.index() == slice.m_start_index && cow_point.slice() != 0 && 
+                if (cow_point.index() == 0 && cow_point.slice() != 0 && 
                     m_slices[cow_point.slice() - 1].is_modifiable())
                 {
-                    return slice_point(cow_point.slice() - 1, m_slices[cow_point.slice() - 1].m_end_index);
+                    return slice_point(cow_point.slice() - 1, m_slices[cow_point.slice() - 1].size());
                 }
                 
-                auto items_to_copy = cow_point.index() - slice.m_start_index + 1;
+                auto items_to_copy = slice.size()/2;
                 auto new_slice = slice_t(m_storage_creator(slice.begin(), slice.begin() + items_to_copy), 0);
                 m_indices.insert(m_indices.begin() + cow_point.slice() + 1, m_indices[cow_point.slice()]);
                 m_indices[cow_point.slice()] = m_indices[cow_point.slice()] - m_slices[cow_point.slice()].size() + items_to_copy;
                 m_slices.insert(m_slices.begin() + cow_point.slice(), new_slice);
-                return slice_point(cow_point.slice(), items_to_copy);
+                
+                m_slices[cow_point.slice() + 1].m_start_index += slice.size()/2;
+                return slice_point(cow_point.slice(), cow_point.index());
             }                        
             else
             {
-               if (cow_point.index() == slice.m_end_index && cow_point.slice() != m_slices.size() - 1 && 
+               if (cow_point.index() == slice.size() && cow_point.slice() != m_slices.size() - 1 && 
                    m_slices[cow_point.slice() + 1].is_modifiable())
-                {
+               {
                     return slice_point(cow_point.slice() + 1, 0);
-                }
+               }
                 
-               auto items_to_copy = slice.m_end_index - cow_point.index();
+               auto items_to_copy = slice.size() - slice.size() / 2;
                auto new_slice = slice_t(m_storage_creator(slice.end() - items_to_copy, slice.end()), 0);
                m_indices.insert(m_indices.begin() + cow_point.slice(), m_indices[cow_point.slice()] - items_to_copy);
                slice.m_end_index -= items_to_copy;
                m_slices.insert(m_slices.begin() + cow_point.slice() + 1, new_slice);
-               return slice_point(cow_point.slice() + 1, items_to_copy);
+               return slice_point(cow_point.slice() + 1, cow_point.index() - slice.size()/2);
             }                        
         }
         
@@ -162,7 +164,7 @@ namespace snapshot_container {
                 
         slice_point end() const
         {
-            return slice_point(m_slices.size() - 1, m_slices[m_slices.size() - 1].m_end_index);
+            return slice_point(m_slices.size() - 1, m_slices[m_slices.size() - 1].size());
         }
             
         static std::shared_ptr<_iterator_kernel<T, StorageCreator>> create(const StorageCreator& creator)

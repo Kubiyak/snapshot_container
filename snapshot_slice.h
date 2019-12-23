@@ -85,7 +85,10 @@ namespace snapshot_container
             if (start_index > end_index)
                 start_index = end_index;
 
-            shared_base_t storage_copy = m_storage->copy(start_index, end_index);
+            if (end_index == storage_base<T>::npos)
+                end_index = size();
+            
+            shared_base_t storage_copy = m_storage->copy(m_start_index + start_index, m_start_index + end_index);
             return _slice<T>(storage_copy, 0, end_index - start_index);
         }
 

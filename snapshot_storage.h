@@ -157,16 +157,17 @@ namespace snapshot_container
 
         template <typename InputIter>
         static shared_base_t create(InputIter start_pos, InputIter end_pos);
-
-        deque_storage() {}
+       
         deque_storage(const deque_storage<T>& rhs) = default;
-
+       
+    private:
+        
+        deque_storage() {}        
+        
         template <typename InputIter>
         deque_storage(InputIter start_pos, InputIter end_pos);
-            
-        static virtual_iter::std_fwd_iter_impl<std::deque<value_type>, iter_mem_size> _iter_impl;
-
-    private:
+        
+        static virtual_iter::std_fwd_iter_impl<std::deque<value_type>, iter_mem_size> _iter_impl;        
         std::deque<T> m_data;
     };
 
@@ -196,12 +197,14 @@ namespace snapshot_container
     template <typename InputItr>
     typename deque_storage<T>::shared_base_t deque_storage<T>::create(InputItr start_pos, InputItr end_pos)
     {
-        return shared_base_t (new deque_storage<T> (start_pos, end_pos));
+        auto storage = new deque_storage<T> (start_pos, end_pos);
+        return shared_base_t (storage);
     }
 
     template <typename T>
     virtual_iter::std_fwd_iter_impl<std::deque<T>, deque_storage<T>::iter_mem_size> deque_storage<T>::_iter_impl;
 
+    
     // Storage creation may need to be stateful. To support this, the higher level abstraction takes a storage creator
     // object as an arg on which operator () is called to create storage. This is a wrapper around deque_storage
     // supporting this usage
@@ -211,13 +214,13 @@ namespace snapshot_container
         typedef typename deque_storage<T>::shared_base_t shared_base_t;
         shared_base_t operator() ()
         {
-            return shared_base_t(new deque_storage<T>);
+            return deque_storage<T>::create();
         }
         
         template <typename IterType>
         shared_base_t operator() (IterType start_pos, IterType end_pos)
         {
-            return shared_base_t(new deque_storage<T>(start_pos, end_pos));
+            return deque_storage<T>::create(start_pos, end_pos);
         }
     };    
 }
