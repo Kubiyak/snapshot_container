@@ -37,12 +37,13 @@ TEST_CASE("Basic iterator_kernel test", "[iterator_kernel]") {
         
     REQUIRE(ik2->m_slices.size() == 2);
     REQUIRE(ik->m_slices.size() == 1);
-    REQUIRE(ik2->m_slices[0].m_end_index ==  test_values.size() / 2);
+    REQUIRE(ik2->m_slices[0].m_end_index == 500);
+    REQUIRE(ik2->m_slices[1].m_start_index == 500);
     REQUIRE(ik2->m_slices[0].m_storage.use_count() == 1);
     REQUIRE(ik2->m_slices[1].m_storage.use_count() == 2);
     
-    REQUIRE(ik2->m_slices[1].m_start_index == test_values.size() / 2);
     REQUIRE((cow_ops_point.slice() == 0 && cow_ops_point.index() == 500));
+    // TODO: Add iterator check over entire iterator_kernel
     
     ik2.reset();
     REQUIRE(ik->m_slices[0].m_storage.use_count() == 1);
@@ -50,10 +51,18 @@ TEST_CASE("Basic iterator_kernel test", "[iterator_kernel]") {
     auto ik3 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);
     cow_point = ik3->slice_index(10000);
     cow_ops_point = ik3->cow_ops(cow_point);
-    REQUIRE(ik3->m_slices[0].m_end_index == test_values.size() / 2);
+    REQUIRE(ik3->container_index(cow_ops_point) == 10000);
+    REQUIRE(ik3->m_slices[0].m_end_index == 10000);
+    REQUIRE(ik3->m_slices[1].m_start_index == 0);
+    
+    REQUIRE(ik3->m_slices[0].size() == 10000);
+    REQUIRE(ik3->m_slices[1].size() == test_values.size() - 10000);
+    REQUIRE(std::equal(test_values.begin(), test_values.begin() + 10000, ik3->m_slices[0].begin()));
+    REQUIRE(std::equal(test_values.begin() + 10000, test_values.end(), ik3->m_slices[1].begin()));
+    
     REQUIRE(cow_ops_point.slice() == 1);
-    REQUIRE(cow_ops_point.index() == 10000 - test_values.size() / 2);
-
+    REQUIRE(cow_ops_point.index() == 0);
+    
 }
 
 
