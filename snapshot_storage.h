@@ -215,9 +215,9 @@ namespace snapshot_container
         }
         
         template <typename IterType>
-        shared_base_t operator() (IterType start, IterType end)
+        shared_base_t operator() (IterType start_pos, IterType end_pos)
         {
-            return shared_base_t(new deque_storage<T>(start, end));
+            return shared_base_t(new deque_storage<T>(start_pos, end_pos));
         }
     };    
 }

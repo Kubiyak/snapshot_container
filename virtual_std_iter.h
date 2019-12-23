@@ -98,10 +98,18 @@ namespace virtual_iter
         virtual iterator_type plus(const iterator_type& lhs, ssize_t offset) const override
         {
             auto iter_store = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (lhs));
+            auto new_iter = iter_store->m_itr + offset;
             return iterator_type (std_fwd_iter_impl<Container, IterMemSize> (),
-                                  iter_store->m_itr + offset);
+                                  new_iter);
         }
 
+        virtual iterator_type minus(const iterator_type& lhs, ssize_t offset) const override
+        {
+            auto iter_store = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (lhs));            
+            return iterator_type (std_fwd_iter_impl<Container, IterMemSize> (),
+                                  iter_store->m_itr - offset);
+        }
+        
         virtual const value_type* pointer(const iterator_type& arg) const override
         {
             auto iter_store = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (arg));

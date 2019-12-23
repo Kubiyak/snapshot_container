@@ -39,9 +39,26 @@ namespace snapshot_container
 
         // Note that slices work like shared_ptrs on copy construction and assignment.  Call copy to obtain
         // a deep copy.
-        _slice(const _slice<T>& rhs) = default;
-        _slice& operator = (const _slice<T>& rhs) = default;
+        _slice(const _slice<T>& rhs):
+            m_storage(rhs.m_storage),
+            m_start_index(rhs.m_start_index),
+            m_end_index(rhs.m_end_index)
+        {
+            
+        }
+        
+        _slice& operator = (const _slice<T>& rhs)
+        {
+            if (this == &rhs)
+                return *this;
+            
+            m_start_index = rhs.m_start_index;
+            m_end_index = rhs.m_end_index;
+            m_storage = rhs.m_storage;            
+            return *this;
+        }
 
+                       
         // Append must only be called on extensible slices
         void append(const T& t)
         {

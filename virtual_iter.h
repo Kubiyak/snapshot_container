@@ -38,7 +38,8 @@ namespace virtual_iter
                                  const fwd_iter<T, MemSize>& rhs) const = 0;
 
         virtual fwd_iter<T, MemSize> plus(const fwd_iter<T, MemSize>& lhs, ssize_t offset) const = 0;
-
+        virtual fwd_iter<T, MemSize> minus(const fwd_iter<T, MemSize>& lhs, ssize_t offset) const = 0;
+        
         virtual const T* pointer(const fwd_iter<T, MemSize>& arg) const = 0;
 
         virtual const T& reference(const fwd_iter<T, MemSize>& arg) const = 0;
@@ -106,6 +107,11 @@ namespace virtual_iter
         difference_type operator-(const fwd_iter<T, MemSize>& rhs) const
         {return m_impl->distance (*this, rhs);}
 
+        fwd_iter<T, MemSize> operator-(difference_type offset)
+        {
+            return m_impl->minus(*this, offset);
+        }
+        
         fwd_iter<T, MemSize> operator+(difference_type offset)
         {return m_impl->plus (*this, offset);}
 
