@@ -107,7 +107,7 @@ namespace snapshot_container {
                m_indices.insert(m_indices.begin() + cow_point.slice(), m_indices[cow_point.slice()] - items_to_copy);
                slice.m_end_index -= items_to_copy;
                m_slices.insert(m_slices.begin() + cow_point.slice() + 1, new_slice);
-               return slice_point(cow_point.slice() + 1, cow_point.index() - slice.size()/2);
+               return slice_point(cow_point.slice() + 1, cow_point.index() - slice.size());
             }                        
         }
         
