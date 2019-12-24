@@ -112,6 +112,12 @@ namespace snapshot_container
             m_storage->remove(m_start_index + index);
             m_end_index -= 1;
         }
+        
+        virtual void remove(size_t start_index, size_t end_index)
+        {
+            m_storage->remove(m_start_index + start_index, m_start_index + end_index);
+            m_end_index -= (end_index - start_index);
+        }
 
         size_t size() const
         {

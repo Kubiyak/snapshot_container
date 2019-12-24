@@ -35,6 +35,8 @@ namespace snapshot_container
 
         virtual void remove(size_t index) = 0;
 
+        virtual void remove(size_t start_index, size_t end_index) = 0;
+        
         virtual size_t size() const = 0;
         
         virtual const value_type& operator[](size_t index) const = 0;
@@ -110,6 +112,11 @@ namespace snapshot_container
         void remove(size_t index) override
         {
             m_data.erase(m_data.begin() + index);
+        }
+        
+        void remove(size_t start_index, size_t end_index) override
+        {
+            m_data.erase(m_data.begin() + start_index, m_data.begin() + end_index);
         }
 
         size_t size() const override

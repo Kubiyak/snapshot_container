@@ -240,8 +240,7 @@ namespace snapshot_container {
             // insert value into the container respecting snapshots
             slice_point insert_pos = insert_cow_ops(insert_before);
             m_slices[insert_pos.slice()].insert(insert_pos.index(), value);
-            for(auto index_pos = m_indices.begin() + insert_pos.slice(); index_pos < m_indices.end(); ++ index_pos)
-                *index_pos += 1;
+            _update_slice_lengths(insert_pos.slice(), 1);
             return insert_pos;                
         }
         
@@ -251,14 +250,98 @@ namespace snapshot_container {
             auto elems_before_insert = m_slices[insert_pos.slice()].size();
             m_slices[insert_pos.slice()].insert(insert_pos.index(), start_pos, end_pos);
             
-            auto inserted_elems = m_slices[insert_pos.slice()].size() - elems_before_insert;
-            
-            for (auto index_pos = m_indices.begin() + insert_pos.slice(); index_pos < m_indices.end(); ++ index_pos)
-                *index_pos += inserted_elems;
-            
+            auto inserted_elems = m_slices[insert_pos.slice()].size() - elems_before_insert;            
+            _update_slice_lengths(insert_pos.slice(), inserted_elems);                        
             return insert_pos;
         }
+        
+        
+        void _update_slice_lengths(size_t begin_index, ssize_t adjustment)
+        {
+            for(auto itr = m_indices.begin() + begin_index; itr != m_indices.end(); ++itr)
+                *itr += adjustment;
+        }
+        
+        
+        slice_point _drop_slice(size_t slice)
+        {
+            // Note that this erase occurs irrespective of the ref counts on the slice.
+            m_indices.erase(m_indices.begin() + slice);
+            m_slices.erase(m_slices.begin() + slice);
+            if (m_indices.size() == 0) {
+                // push on an empty slice as there must always be at least one slice in the deck
+                m_indices.push_back(0);
+                m_slices.push_back(slice_t(m_storage_creator(), 0));
+            }
+            return slice_point(slice, 0);            
+        }
                 
+        slice_point remove(const slice_point& remove_pos)
+        {
+            // Remove element at the specified slice point
+            // Returns iterator to element after deletion.
+            if (remove_pos.slice() >= m_indices.size())
+                throw std::logic_error("Invalid slice_point to remove");
+            
+            auto& slice = m_slices[remove_pos.slice()];
+            // TODO: Revisit this condition. 
+            if (remove_pos.index() >= slice.size())
+                throw std::logic_error("Invalid slice_point index to remove");
+
+            _update_slice_lengths(remove_pos.slice(), -1);
+                       
+            if (slice.size() == 1) 
+            {                
+                return _drop_slice(remove_pos.slice());
+            }
+            else
+            {
+                slice.remove(remove_pos.index());
+                return remove_pos;
+            }
+        }
+                
+        slice_point _remove_within_slice(const slice_point& start_pos, const slice_point& end_pos)
+        {
+            auto& slice = m_slices[start_pos.slice()];
+            
+            _update_slice_lengths(start_pos.slice(), end_pos.index() - start_pos.index());            
+            if (start_pos.index() == 0 && end_pos.index() == slice.size())
+            {
+                return _drop_slice(start_pos.slice());
+            }
+                                 
+            if (slice.m_storage.use_count() > 1)
+            {            
+                // make a copy. TODO: improve efficiency here.
+                auto new_slice = slice.copy(0);
+                m_slices[start_pos.slice()] = new_slice;
+            }
+            
+            slice.remove(start_pos.index(), end_pos.index());
+            return start_pos;
+        }
+        
+        slice_point remove(const slice_point& start_pos, const slice_point& end_pos)
+        {
+            if (start_pos.slice() >= m_slices.size() || end_pos.slice() >= m_slices.size())
+                throw std::logic_error("Invalid slice_point values passed to remove");
+        
+            auto& start_pos_slice = m_slices[start_pos.slice()];
+            auto& end_pos_slice = m_slices[end_pos.slice()];
+            
+            if ( start_pos.index() > start_pos_slice.size() || end_pos.index() > end_pos_slice.size())
+                throw std::logic_error("Invalid slice_point indices passed to remove");
+            
+            if (start_pos.slice() > end_pos.slice() || (start_pos.slice() == end_pos.slice() && start_pos.index() >= end_pos.index()))
+                return end_pos;
+            
+            // remove is all within the same slice
+            if (start_pos.slice() == end_pos.slice())
+                return _remove_within_slice(start_pos, end_pos);
+        }
+        
+        
         // convenience function mostly useful for testing. The higher level abstractions will mostly call
         // cow_ops directly to obtain the slice_point which is useful for caching current position of last
         // index op.
@@ -289,6 +372,26 @@ namespace snapshot_container {
             return slice_point(m_slices.size() - 1, m_slices[m_slices.size() - 1].size());
         }
             
+        slice_point next(const slice_point& current) const
+        {
+            // move slice_point to the next value
+            if (current.slice() >= m_slices.size())
+                return end();
+            
+            auto current_slice = m_slices[current.slice()];
+            if (current.index() >= current_slice.size())
+            {
+                if (current.slice() + 1 == m_slices.size())
+                    return end();
+                else
+                    return slice_point(current.slice() + 1, 0);
+            }
+            else
+            {
+                return slice_point(current.slice(), current.index() + 1);
+            }            
+        }
+        
         static std::shared_ptr<_iterator_kernel<T, StorageCreator>> create(const StorageCreator& creator)
         {
             return std::make_shared<_iterator_kernel<T,StorageCreator>>(creator);
