@@ -100,7 +100,7 @@ namespace snapshot_container
         }
 
         // Insert must not be called on slices not co-terminus with the end of the storage elememt.
-        void insert(size_t index, fwd_iter_type& startPos, const fwd_iter_type& endPos)
+        void insert(size_t index, const fwd_iter_type& startPos, const fwd_iter_type& endPos)
         {
             m_storage->insert(m_start_index + index, startPos, endPos);
             m_end_index = m_storage->size();

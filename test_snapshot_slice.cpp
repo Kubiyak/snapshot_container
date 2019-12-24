@@ -73,11 +73,30 @@ TEST_CASE("iterator_kernel insert tests", "[iterator_kernel]") {
     std::iota(test_values.begin(), test_values.end(), 0);    
     auto ik = _iterator_kernel<int, deque_storage_creator<int>>::create(storage_creator, test_values.begin(), test_values.end());
     auto ik2 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);    
-
+    auto ik3 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);
+    
     auto insert_pos = ik2->slice_index(53);
     ik2->insert(insert_pos, 1024);
     REQUIRE((*ik2)[53] == 1024);
-    REQUIRE((*ik)[53] == 53);    
+    REQUIRE((*ik3)[53] == 53);
+
+    ik2.reset();
+    ik3.reset();
+    REQUIRE(std::equal(test_values.begin(), test_values.end(), ik->m_slices[0].begin()));
+
+    ik2 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik); 
+    std::vector<int> new_values{1001, 1002, 1003, 1004, 1005};
+    
+    auto impl = virtual_iter::std_fwd_iter_impl<std::vector<int>, 48>();
+    virtual_iter::fwd_iter<int, 48> itr (impl, new_values.begin());
+    virtual_iter::fwd_iter<int, 48> end_itr (impl, new_values.end());
+    
+    
+    insert_pos = ik2->slice_index(72);
+    auto insert_iter = ik2->insert(insert_pos, itr, end_itr);
+    REQUIRE((*ik2)[72] == 1001);
+    REQUIRE(std::equal(test_values.begin(), test_values.end(), ik->m_slices[0].begin()));   
 }
+
 
 

@@ -14,6 +14,7 @@ namespace snapshot_container {
         static constexpr size_t npos = 0xFFFFFFFFFFFFFFFF;
         typedef StorageCreator storage_creator_t;
         typedef _slice<T> slice_t;
+        typedef typename slice_t::fwd_iter_type fwd_iter_type;
         
         struct slice_point
         {            
@@ -64,75 +65,75 @@ namespace snapshot_container {
         // Copy a range of elements if necessary to guarantee iteration w/ modification of iterated elements
         // will preserve cow semantics. This is optimized for foward iteration. A separate function optimized
         // for reverse iteration will be required when modifiable reverse iterators are supported.
-        slice_point iteration_cow_ops(const slice_point& cow_point)
+        slice_point iteration_cow_ops(const slice_point& iter_point)
         {            
-            auto& slice = m_slices[cow_point.slice()];
+            auto& slice = m_slices[iter_point.slice()];
 
             // TODO: Revisit this logic and the next if. This needs refinement
             if (slice.is_modifiable() && slice.size() < 2048)
             {
-                return cow_point;
+                return iter_point;
             }
                 
             if (slice.size() < 1024)
             {
-                if (is_prev_slice_modifiable(cow_point.slice()))
+                if (is_prev_slice_modifiable(iter_point.slice()))
                 {
-                    auto& prev_slice = m_slices[cow_point.slice() - 1];
+                    auto& prev_slice = m_slices[iter_point.slice() - 1];
                     auto prev_slice_size = prev_slice.size();
                     prev_slice.append(slice.begin(), slice.end());
-                    m_indices[cow_point.slice() -1] = m_indices[cow_point.slice()];
-                    m_indices.erase(m_indices.begin() + cow_point.slice());
-                    m_slices.erase(m_slices.begin() + cow_point.slice());
-                    return slice_point(cow_point.slice() - 1, prev_slice_size + cow_point.index());
+                    m_indices[iter_point.slice() -1] = m_indices[iter_point.slice()];
+                    m_indices.erase(m_indices.begin() + iter_point.slice());
+                    m_slices.erase(m_slices.begin() + iter_point.slice());
+                    return slice_point(iter_point.slice() - 1, prev_slice_size + iter_point.index());
                 }
                 else
                 {
                     auto new_slice = slice.copy(0);
-                    m_slices[cow_point.slice()] = new_slice;
-                    return cow_point;
+                    m_slices[iter_point.slice()] = new_slice;
+                    return iter_point;
                 }
             }
                             
             auto items_to_copy = slice.size() / 8 + 1;
-            if (items_to_copy + cow_point.index() >= slice.size())
-                items_to_copy = slice.size() - cow_point.index();
+            if (items_to_copy + iter_point.index() >= slice.size())
+                items_to_copy = slice.size() - iter_point.index();
             
             // if the previous slice is modifiable and this access is immediately adjacent to it
             // copy elems into the previous slice instead of creating a new one. This will help decrease
             // fragmentation in some common iteration patterns.
-            if (is_prev_slice_modifiable(cow_point.slice()) && cow_point.index() <= slice.size() / 8)
+            if (is_prev_slice_modifiable(iter_point.slice()) && iter_point.index() <= slice.size() / 8)
             {                
-                auto& prev_slice = m_slices[cow_point.slice() - 1];
+                auto& prev_slice = m_slices[iter_point.slice() - 1];
                 auto prev_slice_size = prev_slice.size();
-                prev_slice.append(slice.begin(), slice.begin() + (cow_point.index() + items_to_copy));
-                m_indices[cow_point.slice() - 1] += items_to_copy;                
-                if (m_indices[cow_point.slice() - 1] == m_indices[cow_point.slice()])
+                prev_slice.append(slice.begin(), slice.begin() + (iter_point.index() + items_to_copy));
+                m_indices[iter_point.slice() - 1] += items_to_copy;                
+                if (m_indices[iter_point.slice() - 1] == m_indices[iter_point.slice()])
                 {
                     // no elems left in element cow_point.slice so remove it
-                    m_indices.erase(m_indices.begin() + cow_point.slice());
-                    m_slices.erase(m_slices.begin() + cow_point.slice());                                    
+                    m_indices.erase(m_indices.begin() + iter_point.slice());
+                    m_slices.erase(m_slices.begin() + iter_point.slice());                                    
                 }
                 else
                 {
-                    m_slices[cow_point.slice()].m_start_index += cow_point.slice() + items_to_copy;
+                    m_slices[iter_point.slice()].m_start_index += iter_point.slice() + items_to_copy;
                 }
-                return slice_point(cow_point.slice() - 1, prev_slice_size + cow_point.index());
+                return slice_point(iter_point.slice() - 1, prev_slice_size + iter_point.index());
             }
             else
             {
                 // insert a new slice
-                auto new_slice = slice.copy(cow_point.index(), cow_point.index() + items_to_copy);
+                auto new_slice = slice.copy(iter_point.index(), iter_point.index() + items_to_copy);
                 if (slice.size() - items_to_copy == 0)
                 {
-                    m_slices[cow_point.slice()] = new_slice;
-                    return slice_point(cow_point.slice(), 0);
+                    m_slices[iter_point.slice()] = new_slice;
+                    return slice_point(iter_point.slice(), 0);
                 }
                 else
                 {
-                    m_indices.insert(m_indices.begin() + cow_point.slice(), m_indices[cow_point.slice()] - new_slice.size());
-                    m_slices.insert(m_slices.begin() + cow_point.slice(), new_slice);
-                    return slice_point(cow_point.slice() - 1, 0);
+                    m_indices.insert(m_indices.begin() + iter_point.slice(), m_indices[iter_point.slice()] - new_slice.size());
+                    m_slices.insert(m_slices.begin() + iter_point.slice(), new_slice);
+                    return slice_point(iter_point.slice() - 1, 0);
                 }                               
             }            
         }
@@ -140,28 +141,28 @@ namespace snapshot_container {
         // cow op related to insertion. The returned slice_point is reasonably optimal for an insertion op.
         // some care is taken to ensure that an empty split does not occur as this would break an invariant
         // of the internal data structures.
-        slice_point insert_cow_ops(const slice_point& cow_point)
+        slice_point insert_cow_ops(const slice_point& insert_point)
         {
-            if (cow_point.slice() >= m_slices.size())
+            if (insert_point.slice() >= m_slices.size())
             {
                 throw std::logic_error("Invalid cow point in call to cow_ops");
             }
         
-            auto& slice = m_slices[cow_point.slice()];
-            if (slice.is_modifiable() && (cow_point.index() <= slice.size()/4 || cow_point.index() + slice.size()/4 >= slice.size()))
+            auto& slice = m_slices[insert_point.slice()];
+            if (slice.is_modifiable() && (insert_point.index() <= slice.size()/4 || insert_point.index() + slice.size()/4 >= slice.size()))
             {
                 // insert point reasonably near one end of the slice so inserts will be reasonably fast here.
-                return cow_point;
+                return insert_point;
             }
             else if (slice.size() < 32)
             {
                 auto new_slice = slice.copy(0);
-                m_slices[cow_point.slice()] = new_slice;
-                return cow_point;
+                m_slices[insert_point.slice()] = new_slice;
+                return insert_point;
             }
             
             // avoid some corner cases where split point is near the beginning or end of the slice.
-            auto copy_index = cow_point.index();
+            auto copy_index = insert_point.index();
             if (copy_index < 4)
                 copy_index = 4;
             else if (copy_index + 4 >= slice.size())
@@ -170,26 +171,24 @@ namespace snapshot_container {
             // This idiom copies on averate 1/4 of the elements in slice to create an insertion point
             // respecting cow semantics
             if (slice.size()/2 > copy_index)
-            {
-                
+            {                
                 auto items_to_copy = copy_index;
                 auto new_slice = slice_t(m_storage_creator(slice.begin(), slice.begin() + items_to_copy), 0);
-                m_indices.insert(m_indices.begin() + cow_point.slice() + 1, m_indices[cow_point.slice()]);
-                m_indices[cow_point.slice()] = m_indices[cow_point.slice()] - m_slices[cow_point.slice()].size() + items_to_copy;
-                m_slices.insert(m_slices.begin() + cow_point.slice(), new_slice);
+                m_indices.insert(m_indices.begin() + insert_point.slice() + 1, m_indices[insert_point.slice()]);
+                m_indices[insert_point.slice()] = m_indices[insert_point.slice()] - m_slices[insert_point.slice()].size() + items_to_copy;
+                m_slices.insert(m_slices.begin() + insert_point.slice(), new_slice);
                 
-                m_slices[cow_point.slice() + 1].m_start_index += copy_index;
-                return slice_point(cow_point.slice(), cow_point.index());
+                m_slices[insert_point.slice() + 1].m_start_index += copy_index;
+                return slice_point(insert_point.slice(), insert_point.index());
             }                        
             else
-            {
-                
+            {                
                 auto items_to_copy = slice.size() - copy_index;
                 auto new_slice = slice_t(m_storage_creator(slice.end() - items_to_copy, slice.end()), 0);
-                m_indices.insert(m_indices.begin() + cow_point.slice(), m_indices[cow_point.slice()] - items_to_copy);
+                m_indices.insert(m_indices.begin() + insert_point.slice(), m_indices[insert_point.slice()] - items_to_copy);
                 slice.m_end_index -= items_to_copy;
-                m_slices.insert(m_slices.begin() + cow_point.slice() + 1, new_slice);
-                return slice_point(cow_point.slice() + 1, cow_point.index() - copy_index);
+                m_slices.insert(m_slices.begin() + insert_point.slice() + 1, new_slice);
+                return slice_point(insert_point.slice() + 1, insert_point.index() - copy_index);
             }  
         }
         
@@ -246,6 +245,20 @@ namespace snapshot_container {
             return insert_pos;                
         }
         
+        slice_point insert(const slice_point& insert_before, const fwd_iter_type& start_pos, const fwd_iter_type& end_pos)
+        {
+            slice_point insert_pos = insert_cow_ops(insert_before);
+            auto elems_before_insert = m_slices[insert_pos.slice()].size();
+            m_slices[insert_pos.slice()].insert(insert_pos.index(), start_pos, end_pos);
+            
+            auto inserted_elems = m_slices[insert_pos.slice()].size() - elems_before_insert;
+            
+            for (auto index_pos = m_indices.begin() + insert_pos.slice(); index_pos < m_indices.end(); ++ index_pos)
+                *index_pos += inserted_elems;
+            
+            return insert_pos;
+        }
+                
         // convenience function mostly useful for testing. The higher level abstractions will mostly call
         // cow_ops directly to obtain the slice_point which is useful for caching current position of last
         // index op.

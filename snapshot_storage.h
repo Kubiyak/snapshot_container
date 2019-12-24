@@ -31,7 +31,7 @@ namespace snapshot_container
 
         virtual void insert(size_t index, const value_type&) = 0;
 
-        virtual void insert(size_t index, fwd_iter_type& start_pos, const fwd_iter_type& end_pos) = 0;
+        virtual void insert(size_t index, const fwd_iter_type& start_pos, const fwd_iter_type& end_pos) = 0;
 
         virtual void remove(size_t index) = 0;
 
@@ -102,7 +102,7 @@ namespace snapshot_container
             m_data.insert (m_data.begin () + index, value);
         }
 
-        void insert(size_t index, fwd_iter_type& start_pos, const fwd_iter_type& end_pos) override
+        void insert(size_t index, const fwd_iter_type& start_pos, const fwd_iter_type& end_pos) override
         {
             m_data.insert(m_data.begin() + index, start_pos, end_pos);
         }
