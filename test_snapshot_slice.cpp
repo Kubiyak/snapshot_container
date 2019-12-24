@@ -62,7 +62,7 @@ TEST_CASE("Basic iterator_kernel test", "[iterator_kernel]") {
     REQUIRE(std::equal(test_values.begin() + 10000, test_values.end(), ik3->m_slices[1].begin()));
     
     REQUIRE(cow_ops_point.slice() == 1);
-    REQUIRE(cow_ops_point.index() == 0);    
+    REQUIRE(cow_ops_point.index() == 0);
 }
 
 
@@ -77,7 +77,7 @@ TEST_CASE("iterator_kernel insert tests", "[iterator_kernel]") {
     auto insert_pos = ik2->slice_index(53);
     ik2->insert(insert_pos, 1024);
     REQUIRE((*ik2)[53] == 1024);
-    REQUIRE((*ik)[53] == 52);    
+    REQUIRE((*ik)[53] == 53);    
 }
 
 
