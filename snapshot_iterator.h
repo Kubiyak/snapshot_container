@@ -313,7 +313,7 @@ namespace snapshot_container {
         {
             auto& slice = m_slices[start_pos.slice()];
             
-            _update_slice_lengths(start_pos.slice(), end_pos.index() - start_pos.index());            
+            _update_slice_lengths(start_pos.slice(), -(end_pos.index() - start_pos.index()));            
             if (start_pos.index() == 0 && end_pos.index() == slice.size())
             {
                 return _drop_slice(start_pos.slice());
@@ -347,6 +347,29 @@ namespace snapshot_container {
             // remove is all within the same slice
             if (start_pos.slice() == end_pos.slice())
                 return _remove_within_slice(start_pos, end_pos);
+        
+            // range to remove spans slices.
+            auto end_slice = end_pos.slice();
+            auto current_slice = start_pos.slice();
+            auto current_slice_index = start_pos.index();
+            while (current_slice < end_slice)
+            {
+                if (current_slice_index == 0)
+                {
+                    _drop_slice(current_slice_index);
+                    end_slice -= 1;
+                }
+                else
+                {
+                    _remove_within_slice(slice_point(current_slice, current_slice_index), 
+                                                     slice_point(current_slice, m_slices[current_slice].size()));
+                    current_slice_index = 0;
+                    current_slice += 1;
+                }                
+            }
+        
+            _remove_within_slice(slice_point(end_slice, 0), slice_point(end_slice, end_pos.index()));
+            return start_pos;
         }
         
         
@@ -419,7 +442,12 @@ namespace snapshot_container {
             else
                 throw std::logic_error("Called create with an empty shared pointer");
         }
-                
+        
+        size_t size() const
+        {
+            return *(m_cum_slice_lengths.end() - 1);
+        }
+        
 #ifndef _SNAPSHOTCONTAINER_TEST        
     private:
 #endif        

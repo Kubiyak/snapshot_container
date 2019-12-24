@@ -102,7 +102,7 @@ TEST_CASE("iterator_kernel insert tests", "[iterator_kernel]") {
 TEST_CASE("iterator_kernel remove tests", "[iterator_kernel]") {
  
     deque_storage_creator<int> storage_creator;
-    std::vector<int> test_values(128);
+    std::vector<int> test_values(2048);
     std::iota(test_values.begin(), test_values.end(), 0);    
     auto ik = _iterator_kernel<int, deque_storage_creator<int>>::create(storage_creator, test_values.begin(), test_values.end());
     auto ik2 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);    
@@ -111,5 +111,22 @@ TEST_CASE("iterator_kernel remove tests", "[iterator_kernel]") {
     auto remove_pos = ik3->slice_index(79);
     ik3->remove(remove_pos);
     REQUIRE(std::equal(test_values.begin(), test_values.end(), ik->m_slices[0].begin()));
+    REQUIRE(ik3->m_slices[0][79] == 80);
+    REQUIRE(ik3->size() == 2047);
+    REQUIRE(ik2->size() == 2048);
     
+    std::vector<int> new_values {10000,10001,10002,10003};
+    auto impl = virtual_iter::std_fwd_iter_impl<std::vector<int>, 48>();
+    virtual_iter::fwd_iter<int, 48> itr (impl, new_values.begin());
+    virtual_iter::fwd_iter<int, 48> end_itr (impl, new_values.end());
+        
+    auto insert_pos = ik2->slice_index(79);
+    ik2->insert(insert_pos, itr, end_itr);
+    REQUIRE(ik2->size() == 2052);
+    REQUIRE(ik2->m_slices.size() == 2);
+    remove_pos = ik2->slice_index(75);
+    auto end_remove_pos = ik2->slice_index(100);
+    ik2->remove(remove_pos, end_remove_pos);
+    REQUIRE(ik2->size() == 2052 - 25);
 }
+
