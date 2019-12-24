@@ -24,6 +24,11 @@ namespace snapshot_container {
             {                
             }
             
+            slice_point():
+            m_slice(npos),
+            m_index(npos)
+            {}
+            
             bool operator == (const slice_point& rhs) const
             {
                 return (m_slice == rhs.m_slice && m_index == rhs.m_index);
@@ -254,15 +259,13 @@ namespace snapshot_container {
             _update_slice_lengths(insert_pos.slice(), inserted_elems);                        
             return insert_pos;
         }
-        
-        
+                
         void _update_slice_lengths(size_t begin_index, ssize_t adjustment)
         {
             for(auto itr = m_cum_slice_lengths.begin() + begin_index; itr != m_cum_slice_lengths.end(); ++itr)
                 *itr += adjustment;
         }
-        
-        
+                
         slice_point _drop_slice(size_t slice)
         {
             // Note that this erase occurs irrespective of the ref counts on the slice.
@@ -403,24 +406,29 @@ namespace snapshot_container {
             return slice_point(m_slices.size() - 1, m_slices[m_slices.size() - 1].size());
         }
             
-        slice_point next(const slice_point& current) const
+        slice_point next(const slice_point& current, size_t incr = 1) const
         {
             // move slice_point to the next value
             if (current.slice() >= m_slices.size())
                 return end();
             
-            auto current_slice = m_slices[current.slice()];
-            if (current.index() >= current_slice.size())
+            if(incr == 1 && current.index() < m_slices[current.slice()].size())
             {
-                if (current.slice() + 1 == m_slices.size())
-                    return end();
-                else
-                    return slice_point(current.slice() + 1, 0);
-            }
-            else
-            {
+                if(current.index() + 1 == m_slices[current.slice()].size())
+                {
+                    if(current.slice() < m_slices.size() - 1)
+                        return slice_point(current.slice() + 1, 0);
+                    else
+                        return end();
+                }
                 return slice_point(current.slice(), current.index() + 1);
-            }            
+            }
+            
+            auto index = container_index(current);
+            if (index + incr < size())
+                return slice_index(index + incr);
+            else
+                return end();            
         }
         
         static std::shared_ptr<_iterator_kernel<T, StorageCreator>> create(const StorageCreator& creator)
@@ -448,6 +456,13 @@ namespace snapshot_container {
             return *(m_cum_slice_lengths.end() - 1);
         }
         
+        ssize_t distance(const slice_point& lhs, const slice_point& rhs)
+        {
+            auto lhs_index = container_index(lhs);
+            auto rhs_index = container_index(rhs);
+            return ssize_t(rhs_index - lhs_index);
+        }
+        
 #ifndef _SNAPSHOTCONTAINER_TEST        
     private:
 #endif        
@@ -466,5 +481,38 @@ namespace snapshot_container {
         std::vector<slice_t> m_slices;
         std::vector<size_t> m_cum_slice_lengths;
         storage_creator_t m_storage_creator;
+    };
+    
+ 
+    template<typename T, typename StorageCreator>
+    class const_iterator
+    {
+    public:
+        using iterator_kernel_t = _iterator_kernel<T, StorageCreator>;
+        typedef typename iterator_kernel_t::slice_point slice_point;
+        typedef std::random_access_iterator_tag iterator_category;
+        typedef T value_type;
+        typedef ssize_t difference_type;
+        typedef T* pointer;
+        typedef T& reference;        
+        
+        const_iterator() = default;
+        const_iterator(const std::shared_ptr<iterator_kernel_t>& kernel, const slice_point& iter_pos):
+            m_kernel(kernel),
+            m_iter_pos(iter_pos)
+        {            
+        }
+        
+        difference_type operator-(const const_iterator& rhs) const
+        {
+            if (m_kernel && rhs.m_kernel == m_kernel)
+                return m_kernel->distance(m_iter_pos, rhs.m_iter_pos);
+            else
+                throw std::logic_error("Invalid iterator subtraction");
+        }
+                              
+        protected:
+            std::shared_ptr<iterator_kernel_t> m_kernel;
+            slice_point  m_iter_pos;
     };
 }
