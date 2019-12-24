@@ -99,4 +99,17 @@ TEST_CASE("iterator_kernel insert tests", "[iterator_kernel]") {
 }
 
 
+TEST_CASE("iterator_kernel remove tests", "[iterator_kernel]") {
+ 
+    deque_storage_creator<int> storage_creator;
+    std::vector<int> test_values(128);
+    std::iota(test_values.begin(), test_values.end(), 0);    
+    auto ik = _iterator_kernel<int, deque_storage_creator<int>>::create(storage_creator, test_values.begin(), test_values.end());
+    auto ik2 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);    
+    auto ik3 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);
 
+    auto remove_pos = ik3->slice_index(79);
+    ik3->remove(remove_pos);
+    REQUIRE(std::equal(test_values.begin(), test_values.end(), ik->m_slices[0].begin()));
+    
+}

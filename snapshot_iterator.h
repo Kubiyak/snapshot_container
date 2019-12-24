@@ -40,7 +40,7 @@ namespace snapshot_container {
         m_storage_creator(std::forward(storage_creator))
         {
             m_slices.push_back(slice_t(m_storage_creator(), 0));
-            m_indices.push_back(0);
+            m_cum_slice_lengths.push_back(0);
         }
         
         template <typename IteratorType>
@@ -48,7 +48,7 @@ namespace snapshot_container {
             m_storage_creator(storage_creator)
         {
             m_slices.push_back(slice_t(m_storage_creator(begin_pos, end_pos), 0));
-            m_indices.push_back(m_slices[0].size());
+            m_cum_slice_lengths.push_back(m_slices[0].size());
         }
 
         _iterator_kernel(const _iterator_kernel& rhs) = default;
@@ -82,8 +82,8 @@ namespace snapshot_container {
                     auto& prev_slice = m_slices[iter_point.slice() - 1];
                     auto prev_slice_size = prev_slice.size();
                     prev_slice.append(slice.begin(), slice.end());
-                    m_indices[iter_point.slice() -1] = m_indices[iter_point.slice()];
-                    m_indices.erase(m_indices.begin() + iter_point.slice());
+                    m_cum_slice_lengths[iter_point.slice() -1] = m_cum_slice_lengths[iter_point.slice()];
+                    m_cum_slice_lengths.erase(m_cum_slice_lengths.begin() + iter_point.slice());
                     m_slices.erase(m_slices.begin() + iter_point.slice());
                     return slice_point(iter_point.slice() - 1, prev_slice_size + iter_point.index());
                 }
@@ -107,11 +107,11 @@ namespace snapshot_container {
                 auto& prev_slice = m_slices[iter_point.slice() - 1];
                 auto prev_slice_size = prev_slice.size();
                 prev_slice.append(slice.begin(), slice.begin() + (iter_point.index() + items_to_copy));
-                m_indices[iter_point.slice() - 1] += items_to_copy;                
-                if (m_indices[iter_point.slice() - 1] == m_indices[iter_point.slice()])
+                m_cum_slice_lengths[iter_point.slice() - 1] += items_to_copy;                
+                if (m_cum_slice_lengths[iter_point.slice() - 1] == m_cum_slice_lengths[iter_point.slice()])
                 {
                     // no elems left in element cow_point.slice so remove it
-                    m_indices.erase(m_indices.begin() + iter_point.slice());
+                    m_cum_slice_lengths.erase(m_cum_slice_lengths.begin() + iter_point.slice());
                     m_slices.erase(m_slices.begin() + iter_point.slice());                                    
                 }
                 else
@@ -131,7 +131,7 @@ namespace snapshot_container {
                 }
                 else
                 {
-                    m_indices.insert(m_indices.begin() + iter_point.slice(), m_indices[iter_point.slice()] - new_slice.size());
+                    m_cum_slice_lengths.insert(m_cum_slice_lengths.begin() + iter_point.slice(), m_cum_slice_lengths[iter_point.slice()] - new_slice.size());
                     m_slices.insert(m_slices.begin() + iter_point.slice(), new_slice);
                     return slice_point(iter_point.slice() - 1, 0);
                 }                               
@@ -174,8 +174,8 @@ namespace snapshot_container {
             {                
                 auto items_to_copy = copy_index;
                 auto new_slice = slice_t(m_storage_creator(slice.begin(), slice.begin() + items_to_copy), 0);
-                m_indices.insert(m_indices.begin() + insert_point.slice() + 1, m_indices[insert_point.slice()]);
-                m_indices[insert_point.slice()] = m_indices[insert_point.slice()] - m_slices[insert_point.slice()].size() + items_to_copy;
+                m_cum_slice_lengths.insert(m_cum_slice_lengths.begin() + insert_point.slice() + 1, m_cum_slice_lengths[insert_point.slice()]);
+                m_cum_slice_lengths[insert_point.slice()] = m_cum_slice_lengths[insert_point.slice()] - m_slices[insert_point.slice()].size() + items_to_copy;
                 m_slices.insert(m_slices.begin() + insert_point.slice(), new_slice);
                 
                 m_slices[insert_point.slice() + 1].m_start_index += copy_index;
@@ -185,7 +185,7 @@ namespace snapshot_container {
             {                
                 auto items_to_copy = slice.size() - copy_index;
                 auto new_slice = slice_t(m_storage_creator(slice.end() - items_to_copy, slice.end()), 0);
-                m_indices.insert(m_indices.begin() + insert_point.slice(), m_indices[insert_point.slice()] - items_to_copy);
+                m_cum_slice_lengths.insert(m_cum_slice_lengths.begin() + insert_point.slice(), m_cum_slice_lengths[insert_point.slice()] - items_to_copy);
                 slice.m_end_index -= items_to_copy;
                 m_slices.insert(m_slices.begin() + insert_point.slice() + 1, new_slice);
                 return slice_point(insert_point.slice() + 1, insert_point.index() - copy_index);
@@ -194,11 +194,11 @@ namespace snapshot_container {
         
         size_t container_index(const slice_point& slice_pos) const
         {
-            if (m_indices.size() < slice_pos.slice())
-                return m_indices[m_indices.size() - 1];
+            if (m_cum_slice_lengths.size() < slice_pos.slice())
+                return m_cum_slice_lengths[m_cum_slice_lengths.size() - 1];
             
             auto slice = m_slices[slice_pos.slice()];
-            auto size_upto_slice = m_indices[slice_pos.slice()];
+            auto size_upto_slice = m_cum_slice_lengths[slice_pos.slice()];
             return (size_upto_slice + slice_pos.index() - slice.size());
         }
         
@@ -211,21 +211,21 @@ namespace snapshot_container {
             // handle some common cases fast
             if (container_index < m_slices[0].size())
             {
-                return (slice_point(0, m_slices[0].size() + container_index - m_indices[0]));
+                return (slice_point(0, m_slices[0].size() + container_index - m_cum_slice_lengths[0]));
             }
-            else if (m_indices.size() > 1 && container_index >= m_indices[m_indices.size() - 2])
+            else if (m_cum_slice_lengths.size() > 1 && container_index >= m_cum_slice_lengths[m_cum_slice_lengths.size() - 2])
             {
-                if (container_index < m_indices[m_indices.size() - 1])
+                if (container_index < m_cum_slice_lengths[m_cum_slice_lengths.size() - 1])
                 {
-                    return slice_point(m_indices.size() - 1, 
-                        m_slices[m_indices.size() - 1].size() + container_index - m_indices[m_indices.size() - 1]);
+                    return slice_point(m_cum_slice_lengths.size() - 1, 
+                        m_slices[m_cum_slice_lengths.size() - 1].size() + container_index - m_cum_slice_lengths[m_cum_slice_lengths.size() - 1]);
                 }
                 else
                 {
                     return end();
                 }
             }
-            else if(m_indices.size() > 1)
+            else if(m_cum_slice_lengths.size() > 1)
             {            
                 return _slice_index_binary(container_index);
             }
@@ -258,7 +258,7 @@ namespace snapshot_container {
         
         void _update_slice_lengths(size_t begin_index, ssize_t adjustment)
         {
-            for(auto itr = m_indices.begin() + begin_index; itr != m_indices.end(); ++itr)
+            for(auto itr = m_cum_slice_lengths.begin() + begin_index; itr != m_cum_slice_lengths.end(); ++itr)
                 *itr += adjustment;
         }
         
@@ -266,11 +266,11 @@ namespace snapshot_container {
         slice_point _drop_slice(size_t slice)
         {
             // Note that this erase occurs irrespective of the ref counts on the slice.
-            m_indices.erase(m_indices.begin() + slice);
+            m_cum_slice_lengths.erase(m_cum_slice_lengths.begin() + slice);
             m_slices.erase(m_slices.begin() + slice);
-            if (m_indices.size() == 0) {
+            if (m_cum_slice_lengths.size() == 0) {
                 // push on an empty slice as there must always be at least one slice in the deck
-                m_indices.push_back(0);
+                m_cum_slice_lengths.push_back(0);
                 m_slices.push_back(slice_t(m_storage_creator(), 0));
             }
             return slice_point(slice, 0);            
@@ -280,7 +280,7 @@ namespace snapshot_container {
         {
             // Remove element at the specified slice point
             // Returns iterator to element after deletion.
-            if (remove_pos.slice() >= m_indices.size())
+            if (remove_pos.slice() >= m_cum_slice_lengths.size())
                 throw std::logic_error("Invalid slice_point to remove");
             
             auto& slice = m_slices[remove_pos.slice()];
@@ -294,9 +294,17 @@ namespace snapshot_container {
             {                
                 return _drop_slice(remove_pos.slice());
             }
-            else
+            else if(slice.m_storage.use_count() == 1)
             {
                 slice.remove(remove_pos.index());
+                return remove_pos;
+            }
+            else
+            {
+                // TODO: Improve on this logic by minimizing copying.
+                auto new_slice = slice.copy(0);
+                m_slices[remove_pos.slice()] = new_slice;
+                new_slice.remove(remove_pos.index());
                 return remove_pos;
             }
         }
@@ -361,7 +369,7 @@ namespace snapshot_container {
                
         slice_point begin() const
         {
-            if (m_indices[0] > 0)
+            if (m_cum_slice_lengths[0] > 0)
                 return slice_point(0, 0);
             else
                 return end();
@@ -418,17 +426,17 @@ namespace snapshot_container {
         
         slice_point _slice_index_binary(size_t container_index) const
         {
-            auto indices_pos = std::lower_bound(m_indices.begin(), m_indices.end(), container_index);
-            if (indices_pos == m_indices.end())
+            auto indices_pos = std::lower_bound(m_cum_slice_lengths.begin(), m_cum_slice_lengths.end(), container_index);
+            if (indices_pos == m_cum_slice_lengths.end())
                 return end();
             
-            auto slice_index = indices_pos - m_indices.begin();
+            auto slice_index = indices_pos - m_cum_slice_lengths.begin();
             auto& slice = m_slices[slice_index];
-            return slice_point(slice_index, slice.size() + container_index - m_indices[slice_index]);            
+            return slice_point(slice_index, slice.size() + container_index - m_cum_slice_lengths[slice_index]);            
         }
         
         std::vector<slice_t> m_slices;
-        std::vector<size_t> m_indices;
+        std::vector<size_t> m_cum_slice_lengths;
         storage_creator_t m_storage_creator;
     };
 }
