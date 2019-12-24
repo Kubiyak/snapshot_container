@@ -23,7 +23,8 @@ TEST_CASE("Basic iterator_kernel test", "[iterator_kernel]") {
     std::iota(test_values.begin(), test_values.end(), 0);    
     auto ik = _iterator_kernel<int, deque_storage_creator<int>>::create(storage_creator, test_values.begin(), test_values.end());
     auto ik2 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);
-    
+
+    // TODO: Add sections
     REQUIRE(ik->m_slices[0].size() == test_values.size());
     REQUIRE(ik->m_slices[0].m_storage.use_count() == 2);        
     REQUIRE(ik->m_slices[0] == ik2->m_slices[0]);    
@@ -33,7 +34,7 @@ TEST_CASE("Basic iterator_kernel test", "[iterator_kernel]") {
     REQUIRE(ik->slice_index(100) == _iterator_kernel<int, deque_storage_creator<int>>::slice_point(0, 100));
     
     auto cow_point = ik2->slice_index(500);    
-    auto cow_ops_point = ik2->cow_ops(cow_point);
+    auto cow_ops_point = ik2->insert_cow_ops(cow_point);
         
     REQUIRE(ik2->m_slices.size() == 2);
     REQUIRE(ik->m_slices.size() == 1);
@@ -50,7 +51,7 @@ TEST_CASE("Basic iterator_kernel test", "[iterator_kernel]") {
     
     auto ik3 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);
     cow_point = ik3->slice_index(10000);
-    cow_ops_point = ik3->cow_ops(cow_point);
+    cow_ops_point = ik3->insert_cow_ops(cow_point);
     REQUIRE(ik3->container_index(cow_ops_point) == 10000);
     REQUIRE(ik3->m_slices[0].m_end_index == 10000);
     REQUIRE(ik3->m_slices[1].m_start_index == 0);
@@ -61,9 +62,22 @@ TEST_CASE("Basic iterator_kernel test", "[iterator_kernel]") {
     REQUIRE(std::equal(test_values.begin() + 10000, test_values.end(), ik3->m_slices[1].begin()));
     
     REQUIRE(cow_ops_point.slice() == 1);
-    REQUIRE(cow_ops_point.index() == 0);
-    
+    REQUIRE(cow_ops_point.index() == 0);    
 }
 
+
+TEST_CASE("iterator_kernel insert tests", "[iterator_kernel]") {
+    
+    deque_storage_creator<int> storage_creator;
+    std::vector<int> test_values(128);
+    std::iota(test_values.begin(), test_values.end(), 0);    
+    auto ik = _iterator_kernel<int, deque_storage_creator<int>>::create(storage_creator, test_values.begin(), test_values.end());
+    auto ik2 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);    
+
+    auto insert_pos = ik2->slice_index(53);
+    ik2->insert(insert_pos, 1024);
+    REQUIRE((*ik2)[53] == 1024);
+    REQUIRE((*ik)[53] == 52);    
+}
 
 

@@ -67,7 +67,7 @@ namespace snapshot_container
         }
 
         // Must only be called on extensible slices
-        void append(fwd_iter_type& start_pos, const fwd_iter_type& end_pos)
+        void append(const fwd_iter_type& start_pos, const fwd_iter_type& end_pos)
         {
             m_storage->append(start_pos, end_pos);
             m_end_index = m_storage->size();

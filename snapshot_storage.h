@@ -24,7 +24,7 @@ namespace snapshot_container
 
         virtual void append(const value_type&) = 0;
 
-        virtual void append(fwd_iter_type& start_pos, const fwd_iter_type& end_pos) = 0;
+        virtual void append(const fwd_iter_type& start_pos, const fwd_iter_type& end_pos) = 0;
 
         // Create a deep copy of the object between startIndex and endIndex and return it.
         virtual shared_base_t copy(size_t start_index = 0, size_t end_index = npos) const = 0;
@@ -81,8 +81,10 @@ namespace snapshot_container
             m_data.push_back (value);
         }
 
-        void append(fwd_iter_type& start_pos, const fwd_iter_type& end_pos) override
+        void append(const fwd_iter_type& start_pos, const fwd_iter_type& end_pos) override
         {
+            fwd_iter_type start_pos_copy(start_pos);
+            
             static std::function<bool(const value_type& v)> f =
                     [this](const value_type& v) 
                     {
@@ -90,7 +92,7 @@ namespace snapshot_container
                         return true;
                     };
 
-            start_pos.visit (end_pos, f);
+            start_pos_copy.visit (end_pos, f);
         }
 
         shared_base_t copy(size_t start_index = 0, size_t end_index = npos) const override;
