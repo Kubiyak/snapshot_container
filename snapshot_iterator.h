@@ -6,9 +6,15 @@
 
 namespace snapshot_container {
 
+    template<typename T, typename C>
+    class iterator;
+    
     template<typename T, typename StorageCreator>
     class _iterator_kernel : public std::enable_shared_from_this<_iterator_kernel<T,StorageCreator>> {
     public:
+        
+        friend iterator<T, StorageCreator>;
+        
         // Implementation details for the iterator type for snapshot_container. Must be created via 
         // shared ptr. Both the container type and iterators for the container will keep a shared ptr to iterator_kernel.
         static constexpr size_t npos = 0xFFFFFFFFFFFFFFFF;
@@ -59,7 +65,7 @@ namespace snapshot_container {
         _iterator_kernel(const _iterator_kernel& rhs) = default;
         _iterator_kernel& operator= (const _iterator_kernel& rhs) = default;
         
-        bool is_prev_slice_modifiable(size_t slice)
+        bool _is_prev_slice_modifiable(size_t slice) const
         {
             if (slice > 0 && m_slices[slice - 1].is_modifiable())
                 return true;
@@ -70,7 +76,7 @@ namespace snapshot_container {
         // Copy a range of elements if necessary to guarantee iteration w/ modification of iterated elements
         // will preserve cow semantics. This is optimized for foward iteration. A separate function optimized
         // for reverse iteration will be required when modifiable reverse iterators are supported.
-        slice_point iteration_cow_ops(const slice_point& iter_point)
+        slice_point _iteration_cow_ops(const slice_point& iter_point)
         {            
             auto& slice = m_slices[iter_point.slice()];
 
@@ -82,7 +88,7 @@ namespace snapshot_container {
                 
             if (slice.size() < 1024)
             {
-                if (is_prev_slice_modifiable(iter_point.slice()))
+                if (_is_prev_slice_modifiable(iter_point.slice()))
                 {
                     auto& prev_slice = m_slices[iter_point.slice() - 1];
                     auto prev_slice_size = prev_slice.size();
@@ -107,7 +113,7 @@ namespace snapshot_container {
             // if the previous slice is modifiable and this access is immediately adjacent to it
             // copy elems into the previous slice instead of creating a new one. This will help decrease
             // fragmentation in some common iteration patterns.
-            if (is_prev_slice_modifiable(iter_point.slice()) && iter_point.index() <= slice.size() / 8)
+            if (_is_prev_slice_modifiable(iter_point.slice()) && iter_point.index() <= slice.size() / 8)
             {                
                 auto& prev_slice = m_slices[iter_point.slice() - 1];
                 auto prev_slice_size = prev_slice.size();
@@ -146,7 +152,7 @@ namespace snapshot_container {
         // cow op related to insertion. The returned slice_point is reasonably optimal for an insertion op.
         // some care is taken to ensure that an empty split does not occur as this would break an invariant
         // of the internal data structures.
-        slice_point insert_cow_ops(const slice_point& insert_point)
+        slice_point _insert_cow_ops(const slice_point& insert_point)
         {
             if (insert_point.slice() >= m_slices.size())
             {
@@ -243,7 +249,8 @@ namespace snapshot_container {
         slice_point insert(const slice_point& insert_before, const T& value)
         {
             // insert value into the container respecting snapshots
-            slice_point insert_pos = insert_cow_ops(insert_before);
+            _incr_update_count();
+            slice_point insert_pos = _insert_cow_ops(insert_before);
             m_slices[insert_pos.slice()].insert(insert_pos.index(), value);
             _update_slice_lengths(insert_pos.slice(), 1);
             return insert_pos;                
@@ -251,7 +258,8 @@ namespace snapshot_container {
         
         slice_point insert(const slice_point& insert_before, const fwd_iter_type& start_pos, const fwd_iter_type& end_pos)
         {
-            slice_point insert_pos = insert_cow_ops(insert_before);
+            _incr_update_count();            
+            slice_point insert_pos = _insert_cow_ops(insert_before);
             auto elems_before_insert = m_slices[insert_pos.slice()].size();
             m_slices[insert_pos.slice()].insert(insert_pos.index(), start_pos, end_pos);
             
@@ -281,6 +289,8 @@ namespace snapshot_container {
                 
         slice_point remove(const slice_point& remove_pos)
         {
+            _incr_update_count();
+            
             // Remove element at the specified slice point
             // Returns iterator to element after deletion.
             if (remove_pos.slice() >= m_cum_slice_lengths.size())
@@ -335,6 +345,7 @@ namespace snapshot_container {
         
         slice_point remove(const slice_point& start_pos, const slice_point& end_pos)
         {
+            _incr_update_count();
             if (start_pos.slice() >= m_slices.size() || end_pos.slice() >= m_slices.size())
                 throw std::logic_error("Invalid slice_point values passed to remove");
         
@@ -381,9 +392,10 @@ namespace snapshot_container {
         // index op.
         T& operator[](size_t container_index)
         {
+            _incr_update_count();
             // This variant can update the underlying container thus it is necessary to do cow_ops
             slice_point slice_pos = slice_index(container_index);
-            slice_pos = iteration_cow_ops(slice_pos);
+            slice_pos = _iteration_cow_ops(slice_pos);
             return m_slices[slice_pos.slice()][slice_pos.index()];
         }
         
@@ -431,6 +443,32 @@ namespace snapshot_container {
                 return end();            
         }
         
+        slice_point prev(const slice_point& current, size_t decr = 1) const
+        {
+            if (current.slice() >= m_slices.size())
+                return end();
+
+            if(decr == 1)
+            {
+                if(current.index() == 0 && current.slice() == 0)
+                    return end(); // TODO: Needs revisiting if reverse iterators will be supported
+            
+                if(current.index() == 0)
+                    return slice_point(current.slice() - 1, m_slices[current.slice() - 1].size() - 1);
+                else
+                    return slice_point(current.slice(), current.index() - 1);
+            }
+        
+            auto container_index = container_index(current);
+            // TODO: Need rend() for reverse iterators. One possibility is that slice_point(npos, npos) can be rend()
+            if (container_index > size())
+                return end();
+            
+            if (container_index - decr >= 0)
+                return slice_index(container_index - decr);
+            return end();
+        }
+                
         static std::shared_ptr<_iterator_kernel<T, StorageCreator>> create(const StorageCreator& creator)
         {
             return std::make_shared<_iterator_kernel<T,StorageCreator>>(creator);
@@ -456,7 +494,7 @@ namespace snapshot_container {
             return *(m_cum_slice_lengths.end() - 1);
         }
         
-        ssize_t distance(const slice_point& lhs, const slice_point& rhs)
+        ssize_t distance(const slice_point& lhs, const slice_point& rhs) const
         {
             auto lhs_index = container_index(lhs);
             auto rhs_index = container_index(rhs);
@@ -466,7 +504,14 @@ namespace snapshot_container {
 #ifndef _SNAPSHOTCONTAINER_TEST        
     private:
 #endif        
+    
+        size_t get_update_count()
+        {
+            return m_update_count;
+        }
         
+        void _incr_update_count() { ++m_update_count; }
+               
         slice_point _slice_index_binary(size_t container_index) const
         {
             auto indices_pos = std::lower_bound(m_cum_slice_lengths.begin(), m_cum_slice_lengths.end(), container_index);
@@ -481,11 +526,12 @@ namespace snapshot_container {
         std::vector<slice_t> m_slices;
         std::vector<size_t> m_cum_slice_lengths;
         storage_creator_t m_storage_creator;
+        size_t m_update_count = 0; // indicator to iterators that state changed
     };
     
  
     template<typename T, typename StorageCreator>
-    class const_iterator
+    class iterator
     {
     public:
         using iterator_kernel_t = _iterator_kernel<T, StorageCreator>;
@@ -496,21 +542,31 @@ namespace snapshot_container {
         typedef T* pointer;
         typedef T& reference;        
         
-        const_iterator() = default;
-        const_iterator(const std::shared_ptr<iterator_kernel_t>& kernel, const slice_point& iter_pos):
+        iterator() = default;
+        iterator(const std::shared_ptr<iterator_kernel_t>& kernel, const slice_point& iter_pos):
             m_kernel(kernel),
             m_iter_pos(iter_pos)
         {            
         }
         
-        difference_type operator-(const const_iterator& rhs) const
+        difference_type operator-(const iterator& rhs) const
         {
             if (m_kernel && rhs.m_kernel == m_kernel)
                 return m_kernel->distance(m_iter_pos, rhs.m_iter_pos);
             else
                 throw std::logic_error("Invalid iterator subtraction");
         }
+        
+        const iterator operator-(difference_type offset) const
+        {
+            return iterator(m_kernel, m_kernel->prev(m_iter_pos, offset));
+        }
                               
+        const iterator operator+(difference_type offset) const
+        {
+            return iterator(m_kernel, m_kernel->prev(m_iter_pos, offset));
+        }
+            
         protected:
             std::shared_ptr<iterator_kernel_t> m_kernel;
             slice_point  m_iter_pos;

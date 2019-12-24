@@ -34,7 +34,7 @@ TEST_CASE("Basic iterator_kernel test", "[iterator_kernel]") {
     REQUIRE(ik->slice_index(100) == _iterator_kernel<int, deque_storage_creator<int>>::slice_point(0, 100));
     
     auto cow_point = ik2->slice_index(500);    
-    auto cow_ops_point = ik2->insert_cow_ops(cow_point);
+    auto cow_ops_point = ik2->_insert_cow_ops(cow_point);
         
     REQUIRE(ik2->m_slices.size() == 2);
     REQUIRE(ik->m_slices.size() == 1);
@@ -51,7 +51,7 @@ TEST_CASE("Basic iterator_kernel test", "[iterator_kernel]") {
     
     auto ik3 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);
     cow_point = ik3->slice_index(10000);
-    cow_ops_point = ik3->insert_cow_ops(cow_point);
+    cow_ops_point = ik3->_insert_cow_ops(cow_point);
     REQUIRE(ik3->container_index(cow_ops_point) == 10000);
     REQUIRE(ik3->m_slices[0].m_end_index == 10000);
     REQUIRE(ik3->m_slices[1].m_start_index == 0);
