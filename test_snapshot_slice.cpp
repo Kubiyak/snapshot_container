@@ -15,6 +15,7 @@
 
 using snapshot_container::_iterator_kernel;
 using snapshot_container::deque_storage_creator;
+using snapshot_container::iterator;
 
 
 TEST_CASE("Basic iterator_kernel test", "[iterator_kernel]") {
@@ -130,3 +131,14 @@ TEST_CASE("iterator_kernel remove tests", "[iterator_kernel]") {
     REQUIRE(ik2->size() == 2052 - 25);
 }
 
+
+TEST_CASE("iterator kernel iterator tests", "[iterator_kernel]") {
+ 
+    deque_storage_creator<int> storage_creator;
+    std::vector<int> test_values(2048);
+    std::iota(test_values.begin(), test_values.end(), 0);    
+    auto ik = _iterator_kernel<int, deque_storage_creator<int>>::create(storage_creator, test_values.begin(), test_values.end());
+    auto end_itr = iterator<int, deque_storage_creator<int>>(ik, ik->end());
+    auto itr = iterator<int, deque_storage_creator<int>>(ik, ik->end());
+    REQUIRE(std::equal(itr, end_itr, test_values.begin()));
+}

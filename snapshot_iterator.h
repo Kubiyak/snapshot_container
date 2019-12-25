@@ -698,7 +698,7 @@ namespace snapshot_container {
 
     protected:
 
-        iterator& _prefix_plusplus_impl() const 
+        iterator& _prefix_plusplus_impl()
         {
             if (not m_kernel)
                 return *this;
@@ -727,8 +727,8 @@ namespace snapshot_container {
             m_current_slice = nullptr;
             m_update_count = m_kernel->get_update_count();
             m_iter_pos = m_kernel->next(m_iter_pos);
-            if (m_iter_pos.slice() < m_kernel.m_slices.size())
-                m_current_slice = &m_kernel.m_slices[m_iter_pos.slice()];
+            if (m_iter_pos.slice() < m_kernel->m_slices.size())
+                m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
             return *this;
         }
 
@@ -763,7 +763,7 @@ namespace snapshot_container {
             if (not m_kernel || m_iter_pos == m_kernel->end())
                 throw std::logic_error("Invalid iterator dereference");
             
-            if (m_update_count == m_kernel->get_update_count() && m_current_slice && m_current_slice->m_storage->use_count() == 1)
+            if (m_update_count == m_kernel->get_update_count() && m_current_slice && m_current_slice->m_storage.use_count() == 1)
                 return (*m_current_slice)[m_iter_pos.index()];
                            
             m_current_slice = nullptr;            
@@ -774,7 +774,7 @@ namespace snapshot_container {
             
             m_update_count = m_kernel->get_update_count();
             
-            m_current_slice = m_kernel->m_slices[m_iter_pos.slice()];
+            m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
             return (*m_current_slice)[m_iter_pos.index()];
         }
                 
