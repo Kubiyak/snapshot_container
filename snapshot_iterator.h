@@ -529,46 +529,274 @@ namespace snapshot_container {
         size_t m_update_count = 0; // indicator to iterators that state changed
     };
     
- 
     template<typename T, typename StorageCreator>
-    class iterator
-    {
+    class iterator {
     public:
+        static constexpr size_t npos = 0xFFFFFFFFFFFFFFFF;
         using iterator_kernel_t = _iterator_kernel<T, StorageCreator>;
+        typedef typename iterator_kernel_t::slice_t slice_t;
         typedef typename iterator_kernel_t::slice_point slice_point;
         typedef std::random_access_iterator_tag iterator_category;
         typedef T value_type;
         typedef ssize_t difference_type;
         typedef T* pointer;
-        typedef T& reference;        
-        
+        typedef T& reference;
+
         iterator() = default;
-        iterator(const std::shared_ptr<iterator_kernel_t>& kernel, const slice_point& iter_pos):
-            m_kernel(kernel),
-            m_iter_pos(iter_pos)
-        {            
+
+        // TODO: Only the higher container type should be able to use this constructor directly.
+        iterator(const std::shared_ptr<iterator_kernel_t>& kernel, const slice_point& iter_pos) :
+        m_kernel(kernel),
+        m_iter_pos(iter_pos),
+        m_current_slice(nullptr),
+        m_update_count(npos) 
+        {
+        }
+
+        iterator(const iterator& rhs) = default;
+        iterator& operator=(const iterator& rhs) = default;
+        
+        const iterator& operator++() const 
+        {
+            return _prefix_plusplus_impl();
+        }
+
+        iterator& operator++() 
+        {
+            return _prefix_plusplus_impl();
+        }
+
+        const iterator operator++(int) const
+        {
+            iterator pos(*this);
+            _prefix_plusplus_impl();
+            return pos;
         }
         
-        difference_type operator-(const iterator& rhs) const
+        iterator operator++(int)
         {
+            iterator pos(*this);
+            _prefix_plusplus_impl();
+            return pos;
+        }
+        
+        iterator& operator--()
+        {
+            return _prefix_minusminus_impl();
+        }
+        
+        const iterator& operator--() const
+        {
+            return _prefix_minusminus_impl();
+        }
+        
+        T& operator * ()
+        {
+            return _dereference_impl();
+        }
+        
+        const T& operator * () const
+        {
+            return _dereference_impl();
+        }
+        
+        T* operator->()
+        {
+            return &(_dereference_impl());
+        }
+        
+        const T* operator->() const
+        {
+            return &(_dereference_impl());
+        }
+        
+        bool operator < (const iterator& rhs) const
+        {
+            if (not (m_kernel && m_kernel == rhs.m_kernel))
+                return false;
+        
+            if (m_iter_pos.slice() < rhs.m_iter_pos.slice())
+                return true;
+            return (m_iter_pos.index() < rhs.m_iter_pos.index());
+        }
+        
+        bool operator > (const iterator& rhs) const
+        {
+            if (not (m_kernel && m_kernel == rhs.m_kernel))
+                return false;
+
+            if (m_iter_pos.slice() > rhs.m_iter_pos.slice())
+                return true;
+            return (m_iter_pos.index() > rhs.m_iter_pos.index());            
+        }
+        
+        bool operator <= (const iterator& rhs) const
+        {
+            if (not (m_kernel && m_kernel == rhs.m_kernel))
+                return false;            
+        
+            if (m_iter_pos.slice() < rhs.m_iter_pos.slice())
+                return true;
+            
+            if (m_iter_pos.slice() == rhs.m_iter_pos.slice())
+                return (m_iter_pos.index() <= rhs.m_iter_pos.index());            
+            return false;
+        }
+        
+        bool operator >= (const iterator& rhs) const
+        {
+            if (not (m_kernel && m_kernel == rhs.m_kernel))
+                return false;            
+        
+            if (m_iter_pos.slice() > rhs.m_iter_pos.slice())
+                return true;
+            
+            if (m_iter_pos.slice() == rhs.m_iter_pos.slice())
+                return (m_iter_pos.index() >= rhs.m_iter_pos.index());            
+            return false;
+        }
+        
+        bool operator == (const iterator& rhs) const
+        {
+            if (not (m_kernel && m_kernel == rhs.m_kernel))
+                return false;
+
+            return m_iter_pos == rhs.m_iter_pos;
+        }
+        
+        bool operator != (const iterator& rhs) const
+        {
+            return !(*this == rhs);
+        }
+        
+        difference_type operator-(const iterator& rhs) const 
+        {
+            if (not m_kernel)
+                return iterator();
+                        
             if (m_kernel && rhs.m_kernel == m_kernel)
                 return m_kernel->distance(m_iter_pos, rhs.m_iter_pos);
             else
                 throw std::logic_error("Invalid iterator subtraction");
         }
-        
-        const iterator operator-(difference_type offset) const
+
+        const iterator operator-(difference_type offset) const 
         {
+            if (not m_kernel)
+                return iterator();
+                
             return iterator(m_kernel, m_kernel->prev(m_iter_pos, offset));
         }
-                              
-        const iterator operator+(difference_type offset) const
-        {
-            return iterator(m_kernel, m_kernel->prev(m_iter_pos, offset));
-        }
+
+        const iterator operator+(difference_type offset) const 
+        {        
+            if (not m_kernel)
+                return iterator();
             
-        protected:
-            std::shared_ptr<iterator_kernel_t> m_kernel;
-            slice_point  m_iter_pos;
+            return iterator(m_kernel, m_kernel->prev(m_iter_pos, offset));
+        }
+
+    protected:
+
+        iterator& _prefix_plusplus_impl() const 
+        {
+            if (not m_kernel)
+                return *this;
+
+            if (m_kernel->get_update_count() == m_update_count && m_current_slice) 
+            {
+                // the state of the underlying container has not changed since the last modification to the iterator
+                // thus cached state can be used to determine next iter position.
+                if (m_current_slice->size() - 1 > m_iter_pos.index() + 1) {
+                    m_iter_pos = slice_point(m_iter_pos.slice(), m_iter_pos.index() + 1);
+                    return *this;
+                }
+                // move to next slice or to end pos            
+                if (m_iter_pos.slice() < m_kernel->m_slices.size() - 1)
+                {
+                    m_iter_pos = slice_point(m_iter_pos.slice() + 1, 0);                    
+                    m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
+                }
+                else
+                {
+                    m_iter_pos = m_kernel->end();
+                }
+                return *this;    
+            }
+
+            m_current_slice = nullptr;
+            m_update_count = m_kernel->get_update_count();
+            m_iter_pos = m_kernel->next(m_iter_pos);
+            if (m_iter_pos.slice() < m_kernel.m_slices.size())
+                m_current_slice = &m_kernel.m_slices[m_iter_pos.slice()];
+            return *this;
+        }
+
+        iterator& _prefix_minusminus_impl() const
+        {
+           if (not m_kernel)
+               return *this;
+           
+           if (m_kernel->get_update_count() == m_update_count && m_current_slice) 
+           {
+               if (m_iter_pos.index() > 0)
+               {
+                   m_iter_pos = slice_point(m_iter_pos.slice(), m_iter_pos.index() - 1);
+                   return *this;
+               }
+               
+               if(m_iter_pos.slice() > 0)
+               {
+                   m_iter_pos = slice_point(m_iter_pos.slice() - 1, m_kernel->m_slices[m_iter_pos.slice() -1].size() - 1);
+                   m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
+               }
+               else
+               {
+                   *this = iterator();
+               }
+               return *this;
+           }
+        }
+        
+        T& _dereference_impl()
+        {
+            if (not m_kernel || m_iter_pos == m_kernel->end())
+                throw std::logic_error("Invalid iterator dereference");
+            
+            if (m_update_count == m_kernel->get_update_count() && m_current_slice && m_current_slice->m_storage->use_count() == 1)
+                return (*m_current_slice)[m_iter_pos.index()];
+                           
+            m_current_slice = nullptr;            
+            m_iter_pos = m_kernel->_iteration_cow_ops(m_iter_pos);
+            
+            if (m_iter_pos == m_kernel->end())
+                throw std::logic_error("Invalid iterator dereference");
+            
+            m_update_count = m_kernel->get_update_count();
+            
+            m_current_slice = m_kernel->m_slices[m_iter_pos.slice()];
+            return (*m_current_slice)[m_iter_pos.index()];
+        }
+                
+        const T& _dereference_impl() const
+        {
+            // This version doesn't need to call cow_ops
+            if (m_update_count == m_kernel->get_update_count() && m_current_slice)
+               return (*m_current_slice)[m_iter_pos.index()]; 
+         
+            m_current_slice = nullptr; 
+            m_iter_pos = m_kernel->next(m_iter_pos, 0);
+             
+            if (m_iter_pos == m_kernel->end())
+                throw std::logic_error("Invalid iterator dereference");
+            
+            m_current_slice = m_kernel->m_slices[m_iter_pos.slice()];
+            return (*m_current_slice)[m_iter_pos.index()];            
+        }
+                
+        mutable slice_t* m_current_slice;
+        mutable size_t m_update_count;
+        mutable slice_point m_iter_pos;        
+        std::shared_ptr<iterator_kernel_t> m_kernel;        
     };
 }
