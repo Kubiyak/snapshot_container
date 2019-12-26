@@ -196,18 +196,19 @@ namespace snapshot_container {
             {
                 throw std::logic_error("Invalid cow point in call to cow_ops");
             }
-                    
+                        
+            size_t copy_fraction = config_traits::cow_ops::copy_fraction_denominator;        
             auto& slice = m_slices[insert_point.slice()];            
             if (slice.is_modifiable()) 
-            {
-                size_t copy_fraction = config_traits::cow_ops::copy_fraction_denominator;
+            {                
                 if (insert_point.index() <= slice.size()/copy_fraction || insert_point.index() + slice.size()/copy_fraction >= slice.size())
                 {
                     // insert point reasonably near one end of the slice so inserts will be reasonably fast here.
                     return insert_point;
                 }
             }
-            else if (slice.size() <= config_traits::cow_ops::max_insertion_copy_size)
+            
+            if (slice.size() <= config_traits::cow_ops::max_insertion_copy_size)
             {
                 auto new_slice = slice.copy(0);
                 m_slices[insert_point.slice()] = new_slice;
@@ -221,10 +222,21 @@ namespace snapshot_container {
             else if (copy_index + config_traits::cow_ops::slice_edge_offset >= slice.size())
                 copy_index = slice.size() - config_traits::cow_ops::slice_edge_offset;
             
+                        
             // This idiom copies on average 1/4 of the elements in slice to create an insertion point
             // respecting cow semantics
             if (slice.size()/2 > copy_index)
             {                
+                if (_is_prev_slice_modifiable(insert_point.slice()))
+                {
+                    auto& prev_slice = m_slices[insert_point.slice() - 1];
+                    auto prev_slice_size = prev_slice.size();
+                    prev_slice.append(slice.begin(), slice.begin() + copy_index);
+                    m_cum_slice_lengths[insert_point.slice() - 1] += copy_index;                    
+                    slice.m_start_index += copy_index;
+                    return slice_point(insert_point.slice() - 1, prev_slice.size() + insert_point.index());
+                }
+                
                 auto items_to_copy = copy_index;
                 auto new_slice = slice_t(m_storage_creator(slice.begin(), slice.begin() + items_to_copy), 0);
                 m_cum_slice_lengths.insert(m_cum_slice_lengths.begin() + insert_point.slice() + 1, m_cum_slice_lengths[insert_point.slice()]);
