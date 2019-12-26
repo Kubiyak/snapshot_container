@@ -144,10 +144,18 @@ TEST_CASE("iterator kernel iterator tests", "[iterator_kernel]") {
 
     itr = iterator<int, deque_storage_creator<int>>(ik, ik->begin());
     auto itr2 = itr + 5;
-    *itr2;
     
     REQUIRE(*itr2 == test_values[5]);
     REQUIRE(itr2 - 5  == itr);
     REQUIRE(itr + 5 == itr2);
-    
+
+    SECTION("increment and decrement checks") {        
+        auto itr3 = itr2;
+        REQUIRE(++itr3 == itr2 + 1);
+        REQUIRE(--itr3 == itr2);
+        REQUIRE(itr3++ == itr2);
+        REQUIRE(itr3 == itr2 + 1);
+        REQUIRE(itr3-- == itr2 + 1);
+        REQUIRE(itr3 == itr2);
+    }
 }

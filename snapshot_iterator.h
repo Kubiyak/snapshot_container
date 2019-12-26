@@ -651,6 +651,20 @@ namespace snapshot_container {
             return _prefix_minusminus_impl();
         }
         
+        iterator operator--(int)
+        {
+            iterator pos(*this);
+            _prefix_minusminus_impl();
+            return pos;
+        }        
+        
+        const iterator operator--(int) const
+        {
+            iterator pos(*this);
+            _prefix_minusminus_impl();
+            return pos;
+        }          
+        
         T& operator * ()
         {
             return _dereference_impl();
@@ -793,7 +807,8 @@ namespace snapshot_container {
             return *this;
         }
 
-        iterator& _prefix_minusminus_impl(ssize_t decr=1) const {
+        iterator& _prefix_minusminus_impl(ssize_t decr=1) 
+        {
             if (not m_kernel)
                 return *this;
 
