@@ -12,7 +12,8 @@
 #include <vector>
 #include <memory>
 #include <algorithm>
-#include <utility>
+#include <tuple>
+
 
 using snapshot_container::_iterator_kernel;
 using snapshot_container::deque_storage_creator;
@@ -24,11 +25,25 @@ template class _iterator_kernel<int, deque_storage_creator<int>>;
 template class iterator<int, deque_storage_creator<int>>;
 
 
-TEST_CASE("Basic iterator_kernel test", "[iterator_kernel]") {
+auto test_ik_creator(size_t num_slices, size_t num_values_per_slice)
+{
     deque_storage_creator<int> storage_creator;
-    std::vector<int> test_values(16384);
+    std::vector<int> test_values(num_values_per_slice * num_slices);
     std::iota(test_values.begin(), test_values.end(), 0);    
-    auto ik = _iterator_kernel<int, deque_storage_creator<int>>::create(storage_creator, test_values.begin(), test_values.end());
+    auto ik = _iterator_kernel<int, deque_storage_creator<int>>::create(storage_creator);
+    
+    
+    for (auto i = 0; i < num_slices; ++i)
+    {
+        ik->append(test_values.begin() + i*num_values_per_slice, test_values.begin() + (i+1) * num_values_per_slice);        
+    }
+    return std::make_tuple(ik, test_values);
+}
+
+
+TEST_CASE("Basic iterator_kernel test", "[iterator_kernel]") {
+    
+    auto [ik, test_values] = test_ik_creator(1, 16384);   
     auto ik2 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);
 
     // TODO: Add sections
@@ -75,10 +90,7 @@ TEST_CASE("Basic iterator_kernel test", "[iterator_kernel]") {
 
 TEST_CASE("iterator_kernel insert tests", "[iterator_kernel]") {
     
-    deque_storage_creator<int> storage_creator;
-    std::vector<int> test_values(128);
-    std::iota(test_values.begin(), test_values.end(), 0);    
-    auto ik = _iterator_kernel<int, deque_storage_creator<int>>::create(storage_creator, test_values.begin(), test_values.end());
+    auto [ik, test_values] = test_ik_creator(1, 128);
     auto ik2 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);    
     auto ik3 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);
     
@@ -106,11 +118,7 @@ TEST_CASE("iterator_kernel insert tests", "[iterator_kernel]") {
 
 
 TEST_CASE("iterator_kernel remove tests", "[iterator_kernel]") {
- 
-    deque_storage_creator<int> storage_creator;
-    std::vector<int> test_values(2048);
-    std::iota(test_values.begin(), test_values.end(), 0);    
-    auto ik = _iterator_kernel<int, deque_storage_creator<int>>::create(storage_creator, test_values.begin(), test_values.end());
+    auto [ik, test_values] = test_ik_creator(1, 2048);
     auto ik2 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);    
     auto ik3 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);
 
@@ -137,12 +145,9 @@ TEST_CASE("iterator_kernel remove tests", "[iterator_kernel]") {
 }
 
 
-TEST_CASE("iterator kernel iterator tests", "[iterator_kernel]") {
+TEST_CASE("basic iterator tests", "[iterator_kernel]") {
  
-    deque_storage_creator<int> storage_creator;
-    std::vector<int> test_values(2048);
-    std::iota(test_values.begin(), test_values.end(), 0);    
-    auto ik = _iterator_kernel<int, deque_storage_creator<int>>::create(storage_creator, test_values.begin(), test_values.end());
+    auto [ik, test_values] = test_ik_creator(1, 2048);   
     auto end_itr = iterator<int, deque_storage_creator<int>>(ik, ik->end());
     auto itr = iterator<int, deque_storage_creator<int>>(ik, ik->end());
     REQUIRE(std::equal(itr, end_itr, test_values.begin()));
@@ -163,36 +168,42 @@ TEST_CASE("iterator kernel iterator tests", "[iterator_kernel]") {
         REQUIRE(itr3-- == itr2 + 1);
         REQUIRE(itr3 == itr2);
     }
+}
+
+
+TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
     
     SECTION("merge into previous on insert") {
-        // create a max merge size iterator kernel to check merge behavior     
+        // create a max merge size iterator kernel to check merge behavior   
         size_t max_merge_size = config_traits::cow_ops::max_merge_size;
-        std::vector<int> test_values2(max_merge_size);
-        std::iota(test_values2.begin(), test_values2.end(), 0);        
-        auto ik = _iterator_kernel<int, deque_storage_creator<int>>::create(storage_creator, test_values2.begin(), test_values2.end());
+        
+        for (auto node_size : {max_merge_size / 2, max_merge_size, 2 * max_merge_size})
+        {
+            auto insert_pos = node_size / config_traits::cow_ops::copy_fraction_denominator + 1;
 
-        auto insert_point = ik->slice_index((max_merge_size / config_traits::cow_ops::copy_fraction_denominator) + 1);
-        auto insert_index = ik->container_index(insert_point);
-        ik->insert(insert_point, 1024);
+            auto [ik, test_values2] = test_ik_creator(1, node_size);
+            auto insert_point = ik->slice_index(insert_pos);
+            auto insert_index = ik->container_index(insert_point);
+            ik->insert(insert_point, 0xdeadbeef);
 
-        std::vector<int> new_values {2001, 2002, 2003, 2004};
-        auto impl = virtual_iter::std_fwd_iter_impl<std::vector<int>, 48>();
-        auto vitr = virtual_iter::fwd_iter<int, 48>(impl, new_values.begin());
-        auto vend_itr = virtual_iter::fwd_iter<int, 48>(impl, new_values.end());
+            REQUIRE(ik->m_cum_slice_lengths[0] == insert_pos + 1);
 
-        REQUIRE(ik->m_cum_slice_lengths[0] == max_merge_size / config_traits::cow_ops::copy_fraction_denominator + 2);
-        insert_point = ik->slice_index(insert_index + 1);
-        auto slice_size_before_insert = ik->m_slices[0].size();
-        ik->insert(insert_point, vitr, vend_itr);
-        REQUIRE(ik->m_cum_slice_lengths[0] == slice_size_before_insert + config_traits::cow_ops::slice_edge_offset + (vend_itr - vitr));
-        REQUIRE(ik->size() == max_merge_size + 5);
+            std::vector<int> new_values { 10001, 10002, 10003, 10004 };
+            auto impl = virtual_iter::std_fwd_iter_impl<std::vector<int>, 48>();
+            auto vitr = virtual_iter::fwd_iter<int, 48>(impl, new_values.begin());
+            auto vend_itr = virtual_iter::fwd_iter<int, 48>(impl, new_values.end());
+
+            insert_point = ik->slice_index(insert_index + 1);            
+            auto slice_size_before_insert = ik->m_slices[0].size();
+            ik->insert(insert_point, vitr, vend_itr);
+            REQUIRE(ik->m_cum_slice_lengths[0] == slice_size_before_insert + config_traits::cow_ops::slice_edge_offset + (vend_itr - vitr));
+            REQUIRE(ik->size() == node_size + 5);
+        }
     }
     
     SECTION("merge into previous on iteration max_merge_size") {
         size_t max_merge_size = config_traits::cow_ops::max_merge_size;
-        std::vector<int> test_values2(max_merge_size);
-        std::iota(test_values2.begin(), test_values2.end(), 0);        
-        auto ik = _iterator_kernel<int, deque_storage_creator<int>>::create(storage_creator, test_values2.begin(), test_values2.end());
+        auto [ik, test_values2] = test_ik_creator(1, max_merge_size);
         auto insert_point = ik->slice_index((max_merge_size / config_traits::cow_ops::copy_fraction_denominator) + 1);
         auto insert_index = ik->container_index(insert_point);
         ik->insert(insert_point, 1024);
@@ -204,12 +215,11 @@ TEST_CASE("iterator kernel iterator tests", "[iterator_kernel]") {
         REQUIRE(*(itr - 1) == 1024);
     }
     
+    
     SECTION("merge into previous on iteration > max_merge_size") {
         // TODO: Figure out how to do a looping construct in catch tests
         size_t slice_size = 2 * config_traits::cow_ops::max_merge_size;
-        std::vector<int> test_values2(slice_size);
-        std::iota(test_values2.begin(), test_values2.end(), 0);
-        auto ik = _iterator_kernel<int, deque_storage_creator<int>>::create(storage_creator, test_values2.begin(), test_values2.end());
+        auto [ik, test_values2] = test_ik_creator(1, slice_size);       
         auto insert_point = ik->slice_index(( slice_size / config_traits::cow_ops::copy_fraction_denominator) + 1);
         auto insert_index = ik->container_index(insert_point);
         ik->insert(insert_point, 5019); // some value distinct from what is already there
@@ -218,6 +228,5 @@ TEST_CASE("iterator kernel iterator tests", "[iterator_kernel]") {
         auto value = *itr;
         REQUIRE(value == insert_index);
         REQUIRE(*(itr - 1) == 5019);
-    }
-    
+    }    
 }

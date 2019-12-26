@@ -554,6 +554,28 @@ namespace snapshot_container {
             auto rhs_index = container_index(rhs);
             return ssize_t(rhs_index - lhs_index);
         }
+    
+        template <typename IterType>
+        slice_point append(const IterType& start_pos, const IterType& end_pos)
+        {
+            // Append creates a new slice with the requisite elements and add this to the end
+            // of the container.
+            // returns the position of first element appended. Returns end() if start_pos == end_pos
+            if (start_pos == end_pos)
+                return end();
+            
+            auto pre_append_size = size();
+            if (pre_append_size == 0)
+            {
+                m_slices.clear();
+                m_cum_slice_lengths.clear();
+            }
+            
+            auto new_slice = slice_t(m_storage_creator(start_pos, end_pos), 0);
+            m_slices.push_back(new_slice);
+            m_cum_slice_lengths.push_back(pre_append_size + new_slice.size());
+            return slice_index(pre_append_size);
+        }
         
 #ifndef _SNAPSHOTCONTAINER_TEST        
     private:
