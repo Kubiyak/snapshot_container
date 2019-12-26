@@ -105,16 +105,17 @@ namespace snapshot_container {
                     return iter_point;
                 }
             }
-                            
-            auto items_to_copy = slice.size() / 8 + 1;
-            if (items_to_copy + iter_point.index() >= slice.size())
-                items_to_copy = slice.size() - iter_point.index();
             
             // if the previous slice is modifiable and this access is immediately adjacent to it
             // copy elems into the previous slice instead of creating a new one. This will help decrease
             // fragmentation in some common iteration patterns.
             if (_is_prev_slice_modifiable(iter_point.slice()) && iter_point.index() <= slice.size() / 8)
             {                
+
+                auto items_to_copy = slice.size() / 8 + 1;
+                if (items_to_copy + iter_point.index() >= slice.size())
+                    items_to_copy = slice.size() - iter_point.index();                
+
                 auto& prev_slice = m_slices[iter_point.slice() - 1];
                 auto prev_slice_size = prev_slice.size();
                 prev_slice.append(slice.begin(), slice.begin() + (iter_point.index() + items_to_copy));
@@ -127,26 +128,33 @@ namespace snapshot_container {
                 }
                 else
                 {
-                    m_slices[iter_point.slice()].m_start_index += iter_point.slice() + items_to_copy;
+                    m_slices[iter_point.slice()].m_start_index += iter_point.index() + items_to_copy;
                 }
                 return slice_point(iter_point.slice() - 1, prev_slice_size + iter_point.index());
             }
+            
+            // Insert a new slice containing iterpoint and extending some number of elements beyond it.
+            if (iter_point.index() < slice.size()/2)
+            {
+                // TODO: Improve this logic to copy less.
+                auto extra_items_to_copy = slice.size() / 8;                
+                auto new_slice = slice.copy(0, iter_point.index() + extra_items_to_copy);
+                auto cum_slice_length = iter_point.slice() == 0 ? new_slice.size() : m_cum_slice_lengths[iter_point.slice() - 1] + new_slice.size();
+                m_cum_slice_lengths.insert(m_cum_slice_lengths.begin() + iter_point.slice(), cum_slice_length);
+                slice.m_start_index += iter_point.index() + extra_items_to_copy;
+                m_slices.insert(m_slices.begin() + iter_point.slice(), new_slice);                
+                return slice_point(iter_point.slice(), iter_point.index());
+            }
             else
             {
-                // insert a new slice
-                auto new_slice = slice.copy(iter_point.index(), iter_point.index() + items_to_copy);
-                if (slice.size() - items_to_copy == 0)
-                {
-                    m_slices[iter_point.slice()] = new_slice;
-                    return slice_point(iter_point.slice(), 0);
-                }
-                else
-                {
-                    m_cum_slice_lengths.insert(m_cum_slice_lengths.begin() + iter_point.slice(), m_cum_slice_lengths[iter_point.slice()] - new_slice.size());
-                    m_slices.insert(m_slices.begin() + iter_point.slice(), new_slice);
-                    return slice_point(iter_point.slice() - 1, 0);
-                }                               
-            }            
+                // copy to end of slice
+                auto new_slice = slice.copy(iter_point.index());
+                auto cum_slice_length = iter_point.slice() == 0 ? iter_point.index() : m_cum_slice_lengths[iter_point.slice() - 1] + iter_point.index();
+                m_cum_slice_lengths.insert(m_cum_slice_lengths.begin() + iter_point.slice(), cum_slice_length);
+                slice.m_end_index = slice.m_start_index + iter_point.index();
+                m_slices.insert(m_slices.begin() + iter_point.slice() + 1, new_slice);
+                return slice_point(iter_point.slice() + 1, 0);
+            }                       
         }
         
         // cow op related to insertion. The returned slice_point is reasonably optimal for an insertion op.
@@ -459,13 +467,13 @@ namespace snapshot_container {
                     return slice_point(current.slice(), current.index() - 1);
             }
         
-            auto container_index = container_index(current);
+            auto index = container_index(current);
             // TODO: Need rend() for reverse iterators. One possibility is that slice_point(npos, npos) can be rend()
-            if (container_index > size())
+            if (index > size())
                 return end();
             
-            if (container_index - decr >= 0)
-                return slice_index(container_index - decr);
+            if (index - decr >= 0)
+                return slice_index(index - decr);
             return end();
         }
                 
@@ -556,6 +564,26 @@ namespace snapshot_container {
         iterator(const iterator& rhs) = default;
         iterator& operator=(const iterator& rhs) = default;
         
+        iterator& operator+=(ssize_t incr)
+        {
+            return _prefix_plusplus_impl(incr);
+        }
+        
+        const iterator& operator+=(ssize_t incr) const
+        {
+            return _prefix_plusplus_impl(incr);
+        }
+        
+        iterator& operator -=(ssize_t decr)
+        {
+            return _prefix_minusminus_impl(decr);
+        }
+        
+        const iterator& operator-=(ssize_t decr) const
+        {
+            return _prefix_minusminus_impl(decr);
+        }
+                
         const iterator& operator++() const 
         {
             return _prefix_plusplus_impl();
@@ -693,17 +721,17 @@ namespace snapshot_container {
             if (not m_kernel)
                 return iterator();
             
-            return iterator(m_kernel, m_kernel->prev(m_iter_pos, offset));
+            return iterator(m_kernel, m_kernel->next(m_iter_pos, offset));
         }
 
     protected:
 
-        iterator& _prefix_plusplus_impl()
+        iterator& _prefix_plusplus_impl(ssize_t incr=1)
         {
             if (not m_kernel)
                 return *this;
 
-            if (m_kernel->get_update_count() == m_update_count && m_current_slice) 
+            if (incr == 1 && m_kernel->get_update_count() == m_update_count && m_current_slice) 
             {
                 // the state of the underlying container has not changed since the last modification to the iterator
                 // thus cached state can be used to determine next iter position.
@@ -726,36 +754,37 @@ namespace snapshot_container {
 
             m_current_slice = nullptr;
             m_update_count = m_kernel->get_update_count();
-            m_iter_pos = m_kernel->next(m_iter_pos);
+            m_iter_pos = m_kernel->next(m_iter_pos, incr);
             if (m_iter_pos.slice() < m_kernel->m_slices.size())
                 m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
             return *this;
         }
 
-        iterator& _prefix_minusminus_impl() const
-        {
-           if (not m_kernel)
-               return *this;
-           
-           if (m_kernel->get_update_count() == m_update_count && m_current_slice) 
-           {
-               if (m_iter_pos.index() > 0)
-               {
-                   m_iter_pos = slice_point(m_iter_pos.slice(), m_iter_pos.index() - 1);
-                   return *this;
-               }
-               
-               if(m_iter_pos.slice() > 0)
-               {
-                   m_iter_pos = slice_point(m_iter_pos.slice() - 1, m_kernel->m_slices[m_iter_pos.slice() -1].size() - 1);
-                   m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
-               }
-               else
-               {
-                   *this = iterator();
-               }
-               return *this;
-           }
+        iterator& _prefix_minusminus_impl(ssize_t decr=1) const {
+            if (not m_kernel)
+                return *this;
+
+            if (decr == 1 && m_kernel->get_update_count() == m_update_count && m_current_slice) {
+                if (m_iter_pos.index() > 0) {
+                    m_iter_pos = slice_point(m_iter_pos.slice(), m_iter_pos.index() - 1);
+                    return *this;
+                }
+
+                if (m_iter_pos.slice() > 0) {
+                    m_iter_pos = slice_point(m_iter_pos.slice() - 1, m_kernel->m_slices[m_iter_pos.slice() - 1].size() - 1);
+                    m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
+                } else {
+                    *this = iterator();
+                }
+                return *this;
+            }
+
+            m_current_slice = nullptr;
+            m_update_count = m_kernel->get_update_count();
+            m_iter_pos = m_kernel->prev(m_iter_pos, decr);
+            if (m_iter_pos.slice() < m_kernel->m_slices.size())
+                m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
+            return *this;
         }
         
         T& _dereference_impl()

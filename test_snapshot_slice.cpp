@@ -141,4 +141,13 @@ TEST_CASE("iterator kernel iterator tests", "[iterator_kernel]") {
     auto end_itr = iterator<int, deque_storage_creator<int>>(ik, ik->end());
     auto itr = iterator<int, deque_storage_creator<int>>(ik, ik->end());
     REQUIRE(std::equal(itr, end_itr, test_values.begin()));
+
+    itr = iterator<int, deque_storage_creator<int>>(ik, ik->begin());
+    auto itr2 = itr + 5;
+    *itr2;
+    
+    REQUIRE(*itr2 == test_values[5]);
+    REQUIRE(itr2 - 5  == itr);
+    REQUIRE(itr + 5 == itr2);
+    
 }
