@@ -9,7 +9,35 @@ namespace snapshot_container {
     template<typename T, typename C>
     class iterator;
     
-    template<typename T, typename StorageCreator>
+    struct _iterator_kernel_config_traits
+    {
+        struct cow_ops
+        {            
+            // Min size at which a slice will be split to effect a cow op
+            static constexpr size_t min_split_size = 2048;
+            
+            // Max size block that will be merged directly into previous slice if possible during
+            // an iteration cow action
+            static constexpr size_t max_merge_size = 1024;
+            
+            // 1/copy_fraction_denominator is the amount of slice copied beyond the current index
+            // when an iteration action triggers a cow copy.
+            // This fraction is also the max amount of a slice shifted to effect an insert op without
+            // creation of a new slice.
+            static constexpr size_t copy_fraction_denominator = 8;
+            
+            // Max size of a slice that will be copied completely to effect an insertion which preserves copy on write
+            // properties.
+            static constexpr size_t max_insertion_copy_size = 32;
+            
+            // cow actions at an offset less than this number from the beginning of a slice or more than this many items
+            // from the end of the slice will result in a copy of this many items to effect certain cow ops.
+            static constexpr size_t slice_edge_offset = 4;
+        };
+    };
+    
+    
+    template<typename T, typename StorageCreator,typename ConfigTraits=_iterator_kernel_config_traits>
     class _iterator_kernel : public std::enable_shared_from_this<_iterator_kernel<T,StorageCreator>> {
     public:
         
@@ -21,6 +49,7 @@ namespace snapshot_container {
         typedef StorageCreator storage_creator_t;
         typedef _slice<T> slice_t;
         typedef typename slice_t::fwd_iter_type fwd_iter_type;
+        typedef ConfigTraits config_traits;
         
         struct slice_point
         {            
@@ -81,12 +110,12 @@ namespace snapshot_container {
             auto& slice = m_slices[iter_point.slice()];
 
             // TODO: Revisit this logic and the next if. This needs refinement
-            if (slice.is_modifiable() && slice.size() < 2048)
+            if (slice.is_modifiable() && slice.size() < config_traits::cow_ops::min_split_size)
             {
                 return iter_point;
             }
                 
-            if (slice.size() < 1024)
+            if (slice.size() <= config_traits::cow_ops::max_merge_size)
             {
                 if (_is_prev_slice_modifiable(iter_point.slice()))
                 {
@@ -109,10 +138,10 @@ namespace snapshot_container {
             // if the previous slice is modifiable and this access is immediately adjacent to it
             // copy elems into the previous slice instead of creating a new one. This will help decrease
             // fragmentation in some common iteration patterns.
-            if (_is_prev_slice_modifiable(iter_point.slice()) && iter_point.index() <= slice.size() / 8)
+            if (_is_prev_slice_modifiable(iter_point.slice()) && iter_point.index() <= slice.size() / config_traits::cow_ops::copy_fraction_denominator)
             {                
 
-                auto items_to_copy = slice.size() / 8 + 1;
+                auto items_to_copy = slice.size() / config_traits::cow_ops::copy_fraction_denominator + 1;
                 if (items_to_copy + iter_point.index() >= slice.size())
                     items_to_copy = slice.size() - iter_point.index();                
 
@@ -137,7 +166,7 @@ namespace snapshot_container {
             if (iter_point.index() < slice.size()/2)
             {
                 // TODO: Improve this logic to copy less.
-                auto extra_items_to_copy = slice.size() / 8;                
+                auto extra_items_to_copy = slice.size() / config_traits::cow_ops::copy_fraction_denominator;                
                 auto new_slice = slice.copy(0, iter_point.index() + extra_items_to_copy);
                 auto cum_slice_length = iter_point.slice() == 0 ? new_slice.size() : m_cum_slice_lengths[iter_point.slice() - 1] + new_slice.size();
                 m_cum_slice_lengths.insert(m_cum_slice_lengths.begin() + iter_point.slice(), cum_slice_length);
@@ -166,14 +195,18 @@ namespace snapshot_container {
             {
                 throw std::logic_error("Invalid cow point in call to cow_ops");
             }
-        
-            auto& slice = m_slices[insert_point.slice()];
-            if (slice.is_modifiable() && (insert_point.index() <= slice.size()/4 || insert_point.index() + slice.size()/4 >= slice.size()))
+                    
+            auto& slice = m_slices[insert_point.slice()];            
+            if (slice.is_modifiable()) 
             {
-                // insert point reasonably near one end of the slice so inserts will be reasonably fast here.
-                return insert_point;
+                size_t copy_fraction = config_traits::cow_ops::copy_fraction_denominator;
+                if (insert_point.index() <= slice.size()/copy_fraction || insert_point.index() + slice.size()/copy_fraction >= slice.size())
+                {
+                    // insert point reasonably near one end of the slice so inserts will be reasonably fast here.
+                    return insert_point;
+                }
             }
-            else if (slice.size() < 32)
+            else if (slice.size() <= config_traits::cow_ops::max_insertion_copy_size)
             {
                 auto new_slice = slice.copy(0);
                 m_slices[insert_point.slice()] = new_slice;
@@ -182,12 +215,12 @@ namespace snapshot_container {
             
             // avoid some corner cases where split point is near the beginning or end of the slice.
             auto copy_index = insert_point.index();
-            if (copy_index < 4)
-                copy_index = 4;
-            else if (copy_index + 4 >= slice.size())
-                copy_index = slice.size() - 4;
+            if (copy_index < config_traits::cow_ops::slice_edge_offset)
+                copy_index = config_traits::cow_ops::slice_edge_offset;
+            else if (copy_index + config_traits::cow_ops::slice_edge_offset >= slice.size())
+                copy_index = slice.size() - config_traits::cow_ops::slice_edge_offset;
             
-            // This idiom copies on averate 1/4 of the elements in slice to create an insertion point
+            // This idiom copies on average 1/4 of the elements in slice to create an insertion point
             // respecting cow semantics
             if (slice.size()/2 > copy_index)
             {                
