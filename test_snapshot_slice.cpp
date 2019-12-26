@@ -188,7 +188,7 @@ TEST_CASE("iterator kernel iterator tests", "[iterator_kernel]") {
         REQUIRE(ik->size() == max_merge_size + 5);
     }
     
-    SECTION("merge into previous on iteration") {
+    SECTION("merge into previous on iteration max_merge_size") {
         size_t max_merge_size = config_traits::cow_ops::max_merge_size;
         std::vector<int> test_values2(max_merge_size);
         std::iota(test_values2.begin(), test_values2.end(), 0);        
@@ -202,6 +202,22 @@ TEST_CASE("iterator kernel iterator tests", "[iterator_kernel]") {
         auto value = *itr;
         REQUIRE(value == insert_index);        
         REQUIRE(*(itr - 1) == 1024);
-    }   
+    }
+    
+    SECTION("merge into previous on iteration > max_merge_size") {
+        // TODO: Figure out how to do a looping construct in catch tests
+        size_t slice_size = 2 * config_traits::cow_ops::max_merge_size;
+        std::vector<int> test_values2(slice_size);
+        std::iota(test_values2.begin(), test_values2.end(), 0);
+        auto ik = _iterator_kernel<int, deque_storage_creator<int>>::create(storage_creator, test_values2.begin(), test_values2.end());
+        auto insert_point = ik->slice_index(( slice_size / config_traits::cow_ops::copy_fraction_denominator) + 1);
+        auto insert_index = ik->container_index(insert_point);
+        ik->insert(insert_point, 5019); // some value distinct from what is already there
+        auto iter_point = insert_index + 1;
+        auto itr = iterator<int, deque_storage_creator<int>>(ik, ik->slice_index(iter_point));        
+        auto value = *itr;
+        REQUIRE(value == insert_index);
+        REQUIRE(*(itr - 1) == 5019);
+    }
     
 }
