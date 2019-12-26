@@ -163,26 +163,45 @@ TEST_CASE("iterator kernel iterator tests", "[iterator_kernel]") {
         REQUIRE(itr3-- == itr2 + 1);
         REQUIRE(itr3 == itr2);
     }
-
-    // create a max merge size iterator kernel to check merge behavior
-    size_t max_merge_size = config_traits::cow_ops::max_merge_size;
-    std::vector<int> test_values2(max_merge_size);
-    std::iota(test_values2.begin(), test_values2.end(), 0);
-    ik = _iterator_kernel<int, deque_storage_creator<int>>::create(storage_creator, test_values2.begin(), test_values2.end());
-
-    auto insert_point = ik->slice_index((max_merge_size / config_traits::cow_ops::copy_fraction_denominator) + 1);
-    auto insert_index = ik->container_index(insert_point);
-    ik->insert(insert_point, 1024);
     
-    std::vector<int> new_values {2001, 2002, 2003, 2004};
-    auto impl = virtual_iter::std_fwd_iter_impl<std::vector<int>, 48>();
-    auto vitr = virtual_iter::fwd_iter<int, 48>(impl, new_values.begin());
-    auto vend_itr = virtual_iter::fwd_iter<int, 48>(impl, new_values.end());
+    SECTION("merge into previous on insert") {
+        // create a max merge size iterator kernel to check merge behavior     
+        size_t max_merge_size = config_traits::cow_ops::max_merge_size;
+        std::vector<int> test_values2(max_merge_size);
+        std::iota(test_values2.begin(), test_values2.end(), 0);        
+        auto ik = _iterator_kernel<int, deque_storage_creator<int>>::create(storage_creator, test_values2.begin(), test_values2.end());
 
-    REQUIRE(ik->m_cum_slice_lengths[0] == max_merge_size / config_traits::cow_ops::copy_fraction_denominator + 2);
-    insert_point = ik->slice_index(insert_index + 1);
-    auto slice_size_before_insert = ik->m_slices[0].size();
-    ik->insert(insert_point, vitr, vend_itr);
-    REQUIRE(ik->m_cum_slice_lengths[0] == slice_size_before_insert + config_traits::cow_ops::slice_edge_offset + (vend_itr - vitr));
-    REQUIRE(ik->size() == max_merge_size + 5);
+        auto insert_point = ik->slice_index((max_merge_size / config_traits::cow_ops::copy_fraction_denominator) + 1);
+        auto insert_index = ik->container_index(insert_point);
+        ik->insert(insert_point, 1024);
+
+        std::vector<int> new_values {2001, 2002, 2003, 2004};
+        auto impl = virtual_iter::std_fwd_iter_impl<std::vector<int>, 48>();
+        auto vitr = virtual_iter::fwd_iter<int, 48>(impl, new_values.begin());
+        auto vend_itr = virtual_iter::fwd_iter<int, 48>(impl, new_values.end());
+
+        REQUIRE(ik->m_cum_slice_lengths[0] == max_merge_size / config_traits::cow_ops::copy_fraction_denominator + 2);
+        insert_point = ik->slice_index(insert_index + 1);
+        auto slice_size_before_insert = ik->m_slices[0].size();
+        ik->insert(insert_point, vitr, vend_itr);
+        REQUIRE(ik->m_cum_slice_lengths[0] == slice_size_before_insert + config_traits::cow_ops::slice_edge_offset + (vend_itr - vitr));
+        REQUIRE(ik->size() == max_merge_size + 5);
+    }
+    
+    SECTION("merge into previous on iteration") {
+        size_t max_merge_size = config_traits::cow_ops::max_merge_size;
+        std::vector<int> test_values2(max_merge_size);
+        std::iota(test_values2.begin(), test_values2.end(), 0);        
+        auto ik = _iterator_kernel<int, deque_storage_creator<int>>::create(storage_creator, test_values2.begin(), test_values2.end());
+        auto insert_point = ik->slice_index((max_merge_size / config_traits::cow_ops::copy_fraction_denominator) + 1);
+        auto insert_index = ik->container_index(insert_point);
+        ik->insert(insert_point, 1024);
+        
+        auto iter_point = insert_index + 1;
+        auto itr = iterator<int, deque_storage_creator<int>>(ik, ik->slice_index(iter_point));
+        auto value = *itr;
+        REQUIRE(value == insert_index);        
+        REQUIRE(*(itr - 1) == 1024);
+    }   
+    
 }

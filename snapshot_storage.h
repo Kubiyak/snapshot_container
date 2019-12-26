@@ -87,7 +87,7 @@ namespace snapshot_container
         {
             fwd_iter_type start_pos_copy(start_pos);
             
-            static std::function<bool(const value_type& v)> f =
+            std::function<bool(const value_type& v)> f =
                     [this](const value_type& v) 
                     {
                         m_data.push_back (v);
