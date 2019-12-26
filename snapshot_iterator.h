@@ -4,6 +4,7 @@
 #include <algorithm>
 
 
+
 namespace snapshot_container {
 
     template<typename T, typename C>
@@ -77,7 +78,7 @@ namespace snapshot_container {
         };
         
         _iterator_kernel(const storage_creator_t& storage_creator) :
-        m_storage_creator(std::forward(storage_creator))
+        m_storage_creator(storage_creator)
         {
             m_slices.push_back(slice_t(m_storage_creator(), 0));
             m_cum_slice_lengths.push_back(0);
@@ -747,7 +748,7 @@ namespace snapshot_container {
         difference_type operator-(const iterator& rhs) const 
         {
             if (not m_kernel)
-                return iterator();
+                return 0x7FFFFFFFFFFFFFFF;
                         
             if (m_kernel && rhs.m_kernel == m_kernel)
                 return m_kernel->distance(m_iter_pos, rhs.m_iter_pos);
@@ -772,7 +773,7 @@ namespace snapshot_container {
         }
 
     protected:
-
+                       
         iterator& _prefix_plusplus_impl(ssize_t incr=1)
         {
             if (not m_kernel)
@@ -807,21 +808,30 @@ namespace snapshot_container {
             return *this;
         }
 
+        const iterator& _prefix_plusplus_impl(ssize_t incr=1) const
+        {
+            return const_cast<const iterator&>(const_cast<iterator*>(this)->_prefix_plusplus_impl(incr));
+        }
+        
         iterator& _prefix_minusminus_impl(ssize_t decr=1) 
         {
             if (not m_kernel)
                 return *this;
 
-            if (decr == 1 && m_kernel->get_update_count() == m_update_count && m_current_slice) {
-                if (m_iter_pos.index() > 0) {
+            if (decr == 1 && m_kernel->get_update_count() == m_update_count && m_current_slice) 
+            {
+                if (m_iter_pos.index() > 0) 
+                {
                     m_iter_pos = slice_point(m_iter_pos.slice(), m_iter_pos.index() - 1);
                     return *this;
                 }
 
-                if (m_iter_pos.slice() > 0) {
+                if (m_iter_pos.slice() > 0) 
+                {
                     m_iter_pos = slice_point(m_iter_pos.slice() - 1, m_kernel->m_slices[m_iter_pos.slice() - 1].size() - 1);
                     m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
-                } else {
+                } else 
+                {
                     *this = iterator();
                 }
                 return *this;
@@ -833,6 +843,11 @@ namespace snapshot_container {
             if (m_iter_pos.slice() < m_kernel->m_slices.size())
                 m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
             return *this;
+        }
+
+        const iterator& _prefix_minusminus_impl(ssize_t decr=1) const
+        {
+            return const_cast<const iterator&>(const_cast<iterator*>(this)->_prefix_minusminus_impl(decr));
         }
         
         T& _dereference_impl()
@@ -867,7 +882,7 @@ namespace snapshot_container {
             if (m_iter_pos == m_kernel->end())
                 throw std::logic_error("Invalid iterator dereference");
             
-            m_current_slice = m_kernel->m_slices[m_iter_pos.slice()];
+            m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
             return (*m_current_slice)[m_iter_pos.index()];            
         }
                 

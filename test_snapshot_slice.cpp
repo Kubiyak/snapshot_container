@@ -12,10 +12,15 @@
 #include <vector>
 #include <memory>
 #include <algorithm>
+#include <utility>
 
 using snapshot_container::_iterator_kernel;
 using snapshot_container::deque_storage_creator;
 using snapshot_container::iterator;
+
+template class deque_storage_creator<int>;
+template class _iterator_kernel<int, deque_storage_creator<int>>;
+template class iterator<int, deque_storage_creator<int>>;
 
 
 TEST_CASE("Basic iterator_kernel test", "[iterator_kernel]") {
