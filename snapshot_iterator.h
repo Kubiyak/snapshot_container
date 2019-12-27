@@ -178,12 +178,16 @@ namespace snapshot_container {
             else
             {
                 // copy to end of slice
-                auto new_slice = slice.copy(iter_point.index());
-                auto cum_slice_length = iter_point.slice() == 0 ? iter_point.index() : m_cum_slice_lengths[iter_point.slice() - 1] + iter_point.index();
+                auto items_to_copy = slice.size() - iter_point.index();                
+                if (items_to_copy < config_traits::cow_ops::slice_edge_offset)
+                    items_to_copy = config_traits::cow_ops::slice_edge_offset;
+                
+                auto new_slice = slice.copy(slice.size() - items_to_copy);
+                auto cum_slice_length = iter_point.slice() == 0 ? items_to_copy : m_cum_slice_lengths[iter_point.slice() - 1] + items_to_copy;
                 m_cum_slice_lengths.insert(m_cum_slice_lengths.begin() + iter_point.slice(), cum_slice_length);
-                slice.m_end_index = slice.m_start_index + iter_point.index();
+                slice.m_end_index-= items_to_copy;
                 m_slices.insert(m_slices.begin() + iter_point.slice() + 1, new_slice);
-                return slice_point(iter_point.slice() + 1, 0);
+                return slice_point(iter_point.slice() + 1, iter_point.index() - m_cum_slice_lengths[iter_point.slice()]);
             }                       
         }
         

@@ -200,6 +200,23 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
             REQUIRE(ik->size() == node_size + 5);
         }
     }
+
+    
+    SECTION("insert split past half point of node", "[iterator kernel]") {
+        size_t max_merge_size = config_traits::cow_ops::max_merge_size;
+        for (auto node_size : {max_merge_size / 2, max_merge_size, 2 * max_merge_size})
+        {
+            auto insert_pos = node_size - (node_size / config_traits::cow_ops::copy_fraction_denominator + 1);
+            auto [ik, test_values2] = test_ik_creator(1, node_size);
+            auto insert_point = ik->slice_index(insert_pos);
+            auto insert_index = ik->container_index(insert_point);
+            ik->insert(insert_point, 0xdeadbeef);
+            REQUIRE(ik->m_cum_slice_lengths[0] == insert_pos);
+            auto itr = iterator<int, deque_storage_creator<int>>(ik, ik->slice_index(insert_index));
+            REQUIRE(*itr == 0xdeadbeef);
+        }
+    }
+    
     
     SECTION("merge into previous on iteration max_merge_size") {
         size_t max_merge_size = config_traits::cow_ops::max_merge_size;
