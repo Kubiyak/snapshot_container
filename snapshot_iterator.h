@@ -183,7 +183,7 @@ namespace snapshot_container {
                     items_to_copy = config_traits::cow_ops::slice_edge_offset;
                 
                 auto new_slice = slice.copy(slice.size() - items_to_copy);
-                auto cum_slice_length = iter_point.slice() == 0 ? items_to_copy : m_cum_slice_lengths[iter_point.slice() - 1] + items_to_copy;
+                auto cum_slice_length = m_cum_slice_lengths[iter_point.slice()] - items_to_copy;
                 m_cum_slice_lengths.insert(m_cum_slice_lengths.begin() + iter_point.slice(), cum_slice_length);
                 slice.m_end_index-= items_to_copy;
                 m_slices.insert(m_slices.begin() + iter_point.slice() + 1, new_slice);
@@ -794,6 +794,14 @@ namespace snapshot_container {
                 throw std::logic_error("Invalid iterator subtraction");
         }
 
+        iterator operator-(difference_type offset)
+        {
+            if (not m_kernel)
+                return iterator();
+                
+            return iterator(m_kernel, m_kernel->prev(m_iter_pos, offset));
+        }        
+        
         const iterator operator-(difference_type offset) const 
         {
             if (not m_kernel)
@@ -810,6 +818,14 @@ namespace snapshot_container {
             return iterator(m_kernel, m_kernel->next(m_iter_pos, offset));
         }
 
+        iterator operator+(difference_type offset)
+        {        
+            if (not m_kernel)
+                return iterator();
+            
+            return iterator(m_kernel, m_kernel->next(m_iter_pos, offset));
+        }
+                
     protected:
                        
         iterator& _prefix_plusplus_impl(ssize_t incr=1)
