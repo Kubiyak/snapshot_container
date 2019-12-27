@@ -204,7 +204,7 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
     
     SECTION("insert split past half point of node", "[iterator kernel]") {
         size_t max_merge_size = config_traits::cow_ops::max_merge_size;
-        for (auto node_size : {/*max_merge_size / 2, max_merge_size, */2 * max_merge_size})
+        for (auto node_size : {max_merge_size / 2, max_merge_size, 2 * max_merge_size})
         {
             auto insert_pos = node_size - (node_size / config_traits::cow_ops::copy_fraction_denominator + 1);
             auto [ik, test_values2] = test_ik_creator(1, node_size);
@@ -215,11 +215,7 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
             REQUIRE(ik->m_cum_slice_lengths[0] == insert_pos);
             auto itr = iterator<int, deque_storage_creator<int>>(ik, ik->slice_index(insert_index));            
 
-            // force non-const iterator access which will force a copy on write
-            // !Serious bug. Non insert/remove modification invalidates iterator.
-            // seems iterator needs to track more than slice_index to recover from this situation.
-            // number of slices can change on non-insert/remove ops but this cannot invalidate iterators.
-            
+            // force non-const iterator access which will force a copy on write            
             *(itr - 1) += 1;
             *(itr - 1) -= 1;
             
