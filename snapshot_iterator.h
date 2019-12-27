@@ -334,13 +334,20 @@ namespace snapshot_container {
         slice_point _drop_slice(size_t slice)
         {
             // Note that this erase occurs irrespective of the ref counts on the slice.
+            auto drop_slice_size = m_slices[slice].size();            
             m_cum_slice_lengths.erase(m_cum_slice_lengths.begin() + slice);
             m_slices.erase(m_slices.begin() + slice);
-            if (m_cum_slice_lengths.size() == 0) {
+            if (m_cum_slice_lengths.size() == 0) 
+            {
                 // push on an empty slice as there must always be at least one slice in the deck
                 m_cum_slice_lengths.push_back(0);
                 m_slices.push_back(slice_t(m_storage_creator(), 0));
             }
+            else
+            {
+                _update_slice_lengths(slice, -1 * drop_slice_size);
+            }
+                        
             return slice_point(slice, 0);            
         }
                 
@@ -439,11 +446,11 @@ namespace snapshot_container {
                 }                
             }
         
-            _remove_within_slice(slice_point(end_slice, 0), slice_point(end_slice, end_pos.index()));
+            if (end_pos.index() != 0)
+                _remove_within_slice(slice_point(end_slice, 0), slice_point(end_slice, end_pos.index()));
             return start_pos;
         }
-        
-        
+                
         // convenience function mostly useful for testing. The higher level abstractions will mostly call
         // cow_ops directly to obtain the slice_point which is useful for caching current position of last
         // index op.
@@ -598,6 +605,12 @@ namespace snapshot_container {
                 return end();
             
             auto slice_index = indices_pos - m_cum_slice_lengths.begin();
+            if (container_index == m_cum_slice_lengths[slice_index])
+            {
+                slice_index += 1;
+                if (slice_index == m_cum_slice_lengths.size())
+                    return end();
+            }
             auto& slice = m_slices[slice_index];
             return slice_point(slice_index, slice.size() + container_index - m_cum_slice_lengths[slice_index]);            
         }
@@ -844,7 +857,8 @@ namespace snapshot_container {
             {
                 // the state of the underlying container has not changed since the last modification to the iterator
                 // thus cached state can be used to determine next iter position.
-                if (m_current_slice->size() - 1 > m_iter_pos.index() + 1) {
+                if (m_current_slice->size() > m_iter_pos.index() + 1) 
+                {
                     m_iter_pos = slice_point(m_iter_pos.slice(), m_iter_pos.index() + 1);
                     m_container_index += 1;
                     return *this;
@@ -863,7 +877,7 @@ namespace snapshot_container {
                 return *this;    
             }
 
-            m_current_slice = nullptr;
+            m_current_slice = nullptr;                       
             m_update_count = m_kernel->get_update_count();
             m_iter_pos = m_kernel->slice_index(m_container_index + incr);
             if (m_iter_pos.slice() < m_kernel->m_slices.size())
@@ -935,21 +949,21 @@ namespace snapshot_container {
         
         T& _dereference_impl()
         {
-            if (not m_kernel || m_iter_pos == m_kernel->end())
-                throw std::logic_error("Invalid iterator dereference");
+            if (not m_kernel)
+                throw std::logic_error("Invalid iterator dereference (no kernel)");
             
             if (m_update_count == m_kernel->get_update_count() && m_current_slice && m_current_slice->m_storage.use_count() == 1)
                 return (*m_current_slice)[m_iter_pos.index()];
                            
             m_current_slice = nullptr;            
             if (m_container_index == npos)
-                throw std::logic_error("Invalid iterator dereference");
+                throw std::logic_error("Invalid iterator dereference (npos)");
             
             m_iter_pos = m_kernel->slice_index(m_container_index);
             m_iter_pos = m_kernel->_iteration_cow_ops(m_iter_pos);
             
             if (m_iter_pos == m_kernel->end())
-                throw std::logic_error("Invalid iterator dereference");
+                throw std::logic_error("Invalid iterator dereference (end)");
             
             m_update_count = m_kernel->get_update_count();
             
@@ -959,17 +973,20 @@ namespace snapshot_container {
                 
         const T& _dereference_impl() const
         {
+            if (!m_kernel)
+                throw std::logic_error("Invalid iterator dereference (no kernel)");
+            
             // This version doesn't need to call cow_ops
             if (m_update_count == m_kernel->get_update_count() && m_current_slice)
                return (*m_current_slice)[m_iter_pos.index()]; 
          
             m_current_slice = nullptr; 
             if (m_container_index == npos)
-                throw std::logic_error("Invalid iterator dereference");
+                throw std::logic_error("Invalid iterator dereference (npos)");
             m_iter_pos = m_kernel->slice_index(m_container_index);
              
             if (m_iter_pos == m_kernel->end())
-                throw std::logic_error("Invalid iterator dereference");
+                throw std::logic_error("Invalid iterator dereference (end)");
             
             m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
             return (*m_current_slice)[m_iter_pos.index()];            

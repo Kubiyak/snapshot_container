@@ -200,7 +200,6 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
             REQUIRE(ik->size() == node_size + 5);
         }
     }
-
     
     SECTION("insert split past half point of node", "[iterator kernel]") {
         size_t max_merge_size = config_traits::cow_ops::max_merge_size;
@@ -224,8 +223,7 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
             REQUIRE(*itr == 0xdeadbeef);
         }
     }
-    
-    
+        
     SECTION("merge into previous on iteration max_merge_size") {
         size_t max_merge_size = config_traits::cow_ops::max_merge_size;
         auto [ik, test_values2] = test_ik_creator(1, max_merge_size);
@@ -239,8 +237,7 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
         REQUIRE(value == insert_index);        
         REQUIRE(*(itr - 1) == 1024);
     }
-    
-    
+        
     SECTION("merge into previous on iteration > max_merge_size") {
         // TODO: Figure out how to do a looping construct in catch tests
         size_t slice_size = 2 * config_traits::cow_ops::max_merge_size;
@@ -254,4 +251,26 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
         REQUIRE(value == insert_index);
         REQUIRE(*(itr - 1) == 5019);
     }    
+}
+
+
+TEST_CASE("multi slice tests", "[iterator kernel]") {
+    
+    SECTION("Remove entire slice") {
+        size_t size = config_traits::cow_ops::max_merge_size;
+        for (auto slice_size : { 16UL, size/2, size, 2*size })
+        {
+            auto [ik, test_values2] = test_ik_creator(3, slice_size);
+            auto ik2 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);
+            auto remove_pos = ik->slice_index(slice_size);
+            auto end_remove_pos = ik->slice_index(2*slice_size);
+            auto itr = ik->remove(remove_pos, end_remove_pos);
+            auto ik2_iter = iterator(ik2, 0);
+            auto ik2_end = iterator(ik2, ik2->size());
+            bool result = std::equal(ik2_iter, ik2_end, test_values2.begin());
+            REQUIRE(result);
+            REQUIRE(ik->m_slices.size() == 2);
+            REQUIRE(ik->size() == 2*slice_size);
+        }
+    }
 }
