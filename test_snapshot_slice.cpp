@@ -214,6 +214,9 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
             REQUIRE(ik->m_cum_slice_lengths[0] == insert_pos);
             auto itr = iterator<int, deque_storage_creator<int>>(ik, ik->slice_index(insert_index));
             REQUIRE(*itr == 0xdeadbeef);
+            
+            REQUIRE(*(itr - 1) == insert_index - 1);
+            
         }
     }
     
