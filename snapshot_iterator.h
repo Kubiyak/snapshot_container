@@ -389,22 +389,45 @@ namespace snapshot_container {
         slice_point _remove_within_slice(const slice_point& start_pos, const slice_point& end_pos)
         {
             auto& slice = m_slices[start_pos.slice()];
-            
-            _update_slice_lengths(start_pos.slice(), -(end_pos.index() - start_pos.index()));            
+                        
             if (start_pos.index() == 0 && end_pos.index() == slice.size())
             {
                 return _drop_slice(start_pos.slice());
             }
-                                 
+            
+            auto num_elems_to_remove = end_pos.index() - start_pos.index();
+            auto original_size = slice.size();
+            _update_slice_lengths(start_pos.slice(), -1 * num_elems_to_remove);
+            
             if (slice.m_storage.use_count() > 1)
             {            
-                // make a copy. TODO: improve efficiency here.
-                auto new_slice = slice.copy(0);
-                m_slices[start_pos.slice()] = new_slice;
+                if (start_pos.index() == 0)
+                {
+                    auto new_slice = slice.copy(end_pos.index(), slice.size());
+                    m_slices[start_pos.slice()] = new_slice;
+                }
+                else if(end_pos.index() == slice.size())
+                {
+                    auto new_slice = slice.copy(0, start_pos.index());
+                    m_slices[start_pos.slice()] = new_slice;
+                }
+                else
+                {
+                    // an inner range of the slice is to be removed.
+                    auto new_slice = slice.copy(0, start_pos.index());
+                    new_slice.append(slice.begin() + end_pos.index(), slice.end());
+                    m_slices[start_pos.slice()] = new_slice;
+                }
+            }
+            else
+            {            
+                slice.remove(start_pos.index(), end_pos.index());
             }
             
-            slice.remove(start_pos.index(), end_pos.index());
-            return start_pos;
+            if (original_size == start_pos.index() + num_elems_to_remove)
+                return slice_point(start_pos.slice() + 1, 0);
+            else
+                return start_pos;
         }
         
         slice_point remove(const slice_point& start_pos, const slice_point& end_pos)
@@ -434,7 +457,7 @@ namespace snapshot_container {
             {
                 if (current_slice_index == 0)
                 {
-                    _drop_slice(current_slice_index);
+                    _drop_slice(current_slice);
                     end_slice -= 1;
                 }
                 else
@@ -448,7 +471,11 @@ namespace snapshot_container {
         
             if (end_pos.index() != 0)
                 _remove_within_slice(slice_point(end_slice, 0), slice_point(end_slice, end_pos.index()));
-            return start_pos;
+         
+            if (start_pos.slice() == m_slices.size() - 1)
+                return start_pos;
+            else
+                return slice_point(start_pos.slice() + 1, 0);
         }
                 
         // convenience function mostly useful for testing. The higher level abstractions will mostly call
