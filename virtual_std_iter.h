@@ -1,9 +1,10 @@
-/**********************************************************************************************************************
-* virtual_iter:
-* Iterator types for opaque sequence collections.
-* Released under the terms of the MIT License:
-* https://opensource.org/licenses/MIT
-**********************************************************************************************************************/
+/***********************************************************************************************************************
+ * snapshot_container:
+ * A temporal sequentially accessible container type.
+ * Copyright 2019 Kuberan Naganathan
+ * Released under the terms of the MIT license:
+ * https://opensource.org/licenses/MIT
+ **********************************************************************************************************************/
 
 #pragma once
 
