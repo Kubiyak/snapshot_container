@@ -117,7 +117,7 @@ TEST_CASE("iterator_kernel insert tests", "[iterator_kernel]") {
 }
 
 
-TEST_CASE("iterator_kernel remove tests", "[iterator_kernel]") {
+TEST_CASE("remove tests", "[iterator_kernel]") {
     auto [ik, test_values] = test_ik_creator(1, 2048);
     auto ik2 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);    
     auto ik3 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);
@@ -142,6 +142,15 @@ TEST_CASE("iterator_kernel remove tests", "[iterator_kernel]") {
     auto end_remove_pos = ik2->slice_index(100);
     ik2->remove(remove_pos, end_remove_pos);
     REQUIRE(ik2->size() == 2052 - 25);
+    
+    auto [ik4, test_values2] = test_ik_creator(1,2048);
+    ik2 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik4);
+    auto remove_begin_pos = ik4->slice_index(128);
+    auto remove_end_pos = ik4->slice_index(256);
+    ik4->remove(remove_begin_pos, remove_end_pos);
+    REQUIRE(ik4->size() == 2048 - 128);
+    test_values2.erase(test_values2.begin() + 128, test_values2.begin() + 256);
+    REQUIRE(std::equal(iterator(ik4, 0), iterator(ik4, ik4->size()), test_values2.begin()));
 }
 
 
@@ -177,7 +186,7 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
         // create a max merge size iterator kernel to check merge behavior   
         size_t max_merge_size = config_traits::cow_ops::max_merge_size;
         
-        for (auto node_size : {max_merge_size / 2, max_merge_size, 2 * max_merge_size})
+        for (auto node_size : {32UL, max_merge_size / 2, max_merge_size, 2 * max_merge_size})
         {
             auto insert_pos = node_size / config_traits::cow_ops::copy_fraction_denominator + 1;
 
@@ -186,7 +195,34 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
             auto insert_index = ik->container_index(insert_point);
             ik->insert(insert_point, 0xdeadbeef);
 
-            REQUIRE(ik->m_cum_slice_lengths[0] == insert_pos + 1);
+            if (node_size > config_traits::cow_ops::max_insertion_copy_size)
+                REQUIRE(ik->m_cum_slice_lengths[0] == insert_pos + 1);
+            else
+                REQUIRE(ik->m_cum_slice_lengths[0] == node_size + 1);
+            
+            std::vector<int> new_values { 10001, 10002, 10003, 10004 };
+            auto impl = virtual_iter::std_fwd_iter_impl<std::vector<int>, 48>();
+            auto vitr = virtual_iter::fwd_iter<int, 48>(impl, new_values.begin());
+            auto vend_itr = virtual_iter::fwd_iter<int, 48>(impl, new_values.end());
+
+            insert_point = ik->slice_index(insert_index + 1);            
+            auto slice_size_before_insert = ik->m_slices[0].size();
+            ik->insert(insert_point, vitr, vend_itr);
+            
+            if (node_size > config_traits::cow_ops::max_insertion_copy_size)
+                REQUIRE(ik->m_cum_slice_lengths[0] == slice_size_before_insert + config_traits::cow_ops::slice_edge_offset + (vend_itr - vitr));
+            REQUIRE(ik->size() == node_size + 5);
+        }
+    
+        for (auto node_size : {16UL, max_merge_size / 2, max_merge_size, 2 * max_merge_size})
+        {
+            auto insert_pos = node_size / config_traits::cow_ops::copy_fraction_denominator + 1;
+
+            auto [ik, test_values2] = test_ik_creator(1, node_size);
+            auto ik2 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);
+            auto insert_point = ik->slice_index(insert_pos);
+            auto insert_index = ik->container_index(insert_point);
+            ik->insert(insert_point, 0xdeadbeef);
 
             std::vector<int> new_values { 10001, 10002, 10003, 10004 };
             auto impl = virtual_iter::std_fwd_iter_impl<std::vector<int>, 48>();
@@ -196,7 +232,6 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
             insert_point = ik->slice_index(insert_index + 1);            
             auto slice_size_before_insert = ik->m_slices[0].size();
             ik->insert(insert_point, vitr, vend_itr);
-            REQUIRE(ik->m_cum_slice_lengths[0] == slice_size_before_insert + config_traits::cow_ops::slice_edge_offset + (vend_itr - vitr));
             REQUIRE(ik->size() == node_size + 5);
         }
     }
