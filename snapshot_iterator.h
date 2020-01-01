@@ -2,6 +2,7 @@
 #include <memory>
 #include <tuple>
 #include <algorithm>
+#include <iostream>
 
 
 namespace snapshot_container {
@@ -148,7 +149,7 @@ namespace snapshot_container {
                 auto& prev_slice = m_slices[iter_point.slice() - 1];
                 auto prev_slice_size = prev_slice.size();
                 prev_slice.append(slice.begin(), slice.begin() + (iter_point.index() + items_to_copy));
-                m_cum_slice_lengths[iter_point.slice() - 1] += items_to_copy;                
+                m_cum_slice_lengths[iter_point.slice() - 1] += items_to_copy + iter_point.index();                
                 if (m_cum_slice_lengths[iter_point.slice() - 1] == m_cum_slice_lengths[iter_point.slice()])
                 {
                     // no elems left in element cow_point.slice so remove it
@@ -434,14 +435,20 @@ namespace snapshot_container {
         {
             _incr_update_count();
             if (start_pos.slice() >= m_slices.size() || end_pos.slice() >= m_slices.size())
+            {                
                 throw std::logic_error("Invalid slice_point values passed to remove");
-        
+            }
+                
             auto& start_pos_slice = m_slices[start_pos.slice()];
             auto& end_pos_slice = m_slices[end_pos.slice()];
             
             if ( start_pos.index() > start_pos_slice.size() || end_pos.index() > end_pos_slice.size())
+            {
+                std::cerr << "start index: " << start_pos.index() << " max: " << start_pos_slice.size() << std::endl;
+                std::cerr << "end index: " << end_pos.index() << " max: " << end_pos_slice.size() << std::endl;
                 throw std::logic_error("Invalid slice_point indices passed to remove");
-            
+            }
+                
             if (start_pos.slice() > end_pos.slice() || (start_pos.slice() == end_pos.slice() && start_pos.index() >= end_pos.index()))
                 return end_pos;
             
@@ -625,6 +632,50 @@ namespace snapshot_container {
             m_slices.push_back(new_slice);
             m_cum_slice_lengths.push_back(pre_append_size + new_slice.size());
             return slice_index(pre_append_size);
+        }
+        
+        bool integrity_check() const
+        {
+            // Check for referential integrity. Returns true if check passes and false otherwise
+            // 1. size integrity
+            // 2. slice length integrity
+            
+            if (m_cum_slice_lengths.size() != m_slices.size())
+            {
+                std::cerr << "Slices and cum slice lengths don't have same size" << std::endl;
+                return false;
+            }
+            
+            auto expected_total_size = size();
+            size_t actual_total_size = 0;
+            for(auto& slice: m_slices)
+            {
+                actual_total_size += slice.size();
+            }
+            if (expected_total_size != actual_total_size)
+            {
+                    std::cerr << "Expected size: " << expected_total_size << " Actual size: " << 
+                        actual_total_size << std::endl;
+                    return false;
+            }
+            
+            auto size_upto_here = 0;
+            for (size_t i = 0; i < m_cum_slice_lengths.size(); ++i)
+            {
+                if (m_cum_slice_lengths[i] - size_upto_here != m_slices[i].size())
+                {
+                    std::cerr << "Referential integrity break at slice index " << i << std::endl;
+                    std::cerr << "Total slices: " << m_slices.size() << std::endl;
+                    std::cerr << "Cum size: " << m_cum_slice_lengths[i] << std::endl;
+                    std::cerr << "Prev cum size: " << size_upto_here << std::endl;
+                    std::cerr << "Expected size: " << m_cum_slice_lengths[i] - size_upto_here << std::endl;
+                    std::cerr << "Actual size: " << m_slices[i].size() << std::endl;
+                    return false;
+                }                
+                size_upto_here = m_cum_slice_lengths[i];
+            }
+                        
+            return true;
         }
         
 #ifndef _SNAPSHOTCONTAINER_TEST        
