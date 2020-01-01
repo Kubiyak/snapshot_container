@@ -133,7 +133,7 @@ struct IKSimRunner
     {
         auto ik_size = ik->size();
         // This removes on average less than the insertions so the container's size should increase
-        auto max_items_to_remove = ik_size > 1000 ? ik_size / 125 : 5;
+        auto max_items_to_remove = ik_size > 1000 ? ik_size / 110 : 5;
         size_t remove_start = distrib(generator) % ik_size;
         size_t remove_end = (remove_start + max_items_to_remove) < ik_size ? (max_items_to_remove + remove_start) : ik_size;
         if (remove_end > ik_size)
@@ -148,7 +148,7 @@ struct IKSimRunner
                      std::uniform_int_distribution<size_t>& distrib)
     {
         auto ik_size = ik->size();        
-        auto max_iteration_length = ik_size > 1000 ? ik_size / 10 : 100;
+        auto max_iteration_length = ik_size > 1000 ? ik_size / 5 : 200;
         auto iter_start = distrib(generator) % ik_size;
         auto iter_end = iter_start + max_iteration_length < ik_size ? iter_start + max_iteration_length : ik_size;        
         // std::cerr << "Iterating from " << iter_start << " to " << iter_end << " total size: " << ik_size << std::endl;
@@ -187,16 +187,18 @@ slice_stats IKSimRunner::run(size_t slice_size, size_t num_slices, size_t num_it
     {
         auto action = distribution(generator);
         (this->*action_table[action])(ik, generator, action_distribution);
-        if (!ik->integrity_check())
-        {
-            std::cerr << "Integrity check failed after " << i << " iterations at op type " << action << std::endl;            
-            std::terminate();
-        }
+
         
         stats.record(ik);
                    
         if ((i + 1) % 1000 == 0)
         {
+            if (!ik->integrity_check())
+            {
+                std::cerr << "Integrity check failed after " << i << " iterations at op type " << action << std::endl;
+                std::terminate();
+            }
+            
             std::cerr << "Size = " << ik->size() << " num slices: " << ik->m_slices.size() << std::endl;
         }
     }
@@ -208,7 +210,7 @@ slice_stats IKSimRunner::run(size_t slice_size, size_t num_slices, size_t num_it
 int main()
 {
     IKSimRunner runner;
-    auto results = runner.run(2048, 2, 10000);    
+    auto results = runner.run(2048, 2, 20000);    
     results.display_stats();    
     return 0;
 }

@@ -16,8 +16,8 @@ namespace snapshot_container {
         // Below lwm slices are created when convenient
         // above lwm slices compaction begins to occur when iterating with a non-const iterator
         // above hwm new slice creation is limited in favor of copying slices.
-        static constexpr size_t num_slices_lwm = 16;
-        static constexpr size_t num_slices_hwm = 64;
+        static constexpr size_t num_slices_lwm = 256;
+        static constexpr size_t num_slices_hwm = 512;
         struct cow_ops
         {            
             // Min size at which a slice will be split to effect a cow op
@@ -163,11 +163,7 @@ namespace snapshot_container {
                     return slice_point(iter_point.slice() - 1, prev_slice_size + iter_point.index());                    
                 }
             }
-
-            // previous slice is not modifiable or current slice cannot be merged into it.
-            if (slice.is_modifiable())
-                return iter_point;
-           
+            
             // slice is not modifiable. If num slices is above hwm or slice is small enough, just copy it
             if (m_slices.size() > config_traits::num_slices_hwm || slice.size() <= config_traits::cow_ops::max_insertion_copy_size)            
             {
@@ -663,7 +659,7 @@ namespace snapshot_container {
                 return false;
             }
             
-            auto expected_total_size = size();
+            size_t expected_total_size = size();
             size_t actual_total_size = 0;
             for(auto& slice: m_slices)
             {
@@ -676,7 +672,7 @@ namespace snapshot_container {
                     return false;
             }
             
-            auto size_upto_here = 0;
+            size_t size_upto_here = 0;
             for (size_t i = 0; i < m_cum_slice_lengths.size(); ++i)
             {
                 if (m_cum_slice_lengths[i] - size_upto_here != m_slices[i].size())
