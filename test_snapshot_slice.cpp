@@ -312,6 +312,7 @@ TEST_CASE("multi slice tests", "[iterator kernel]") {
     SECTION("Remove entire slice plus partial slices to left and right") {
         size_t size = config_traits::cow_ops::max_merge_size;
         for (auto slice_size : { 4UL, size/2, size, 2*size }) {
+            std::cerr << "Slice size: " << slice_size << std::endl;
             auto [ik, test_values2] = test_ik_creator(5, slice_size);
             auto ik2 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik);
             auto remove_pos = ik->slice_index(slice_size + slice_size / 2);
@@ -327,6 +328,19 @@ TEST_CASE("multi slice tests", "[iterator kernel]") {
                                test_values2.begin() + 3*slice_size + slice_size/2);
             
             REQUIRE(test_values2.size() == 3*slice_size);
+            auto iter = iterator(ik, 0);
+            auto test_values2_iter = test_values2.begin();
+            auto end_iter = iterator(ik, ik->size());
+            while (iter < end_iter)
+            {
+                if (*iter != *test_values2_iter)
+                {
+                    std::cerr << "Iterator mismatch" << std::endl;
+                }
+                ++iter;
+                ++test_values2_iter;
+            }
+            
             REQUIRE(std::equal(iterator(ik, 0), iterator(ik, ik->size()), test_values2.begin()));
         }
     }

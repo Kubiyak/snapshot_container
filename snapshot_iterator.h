@@ -168,8 +168,8 @@ namespace snapshot_container {
             if (slice.is_modifiable())
                 return iter_point;
            
-            // slice is not modifiable. If num slices is above hwm then copy it
-            if (m_slices.size() > config_traits::num_slices_hwm)            
+            // slice is not modifiable. If num slices is above hwm or slice is small enough, just copy it
+            if (m_slices.size() > config_traits::num_slices_hwm || slice.size() <= config_traits::cow_ops::max_insertion_copy_size)            
             {
                 // make a copy of the slice
                 auto new_slice = slice.copy(0);
@@ -258,7 +258,7 @@ namespace snapshot_container {
                     return slice_point(insert_point.slice() - 1, prev_slice_size + insert_point.index());
                 }
                 
-                auto items_to_copy = copy_index + 1;
+                auto items_to_copy = copy_index;
                 auto new_slice = slice_t(m_storage_creator(slice.begin(), slice.begin() + items_to_copy), 0);
                 m_cum_slice_lengths.insert(m_cum_slice_lengths.begin() + insert_point.slice() + 1, m_cum_slice_lengths[insert_point.slice()]);
                 m_cum_slice_lengths[insert_point.slice()] = m_cum_slice_lengths[insert_point.slice()] - m_slices[insert_point.slice()].size() + items_to_copy;
