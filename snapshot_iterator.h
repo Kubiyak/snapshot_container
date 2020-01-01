@@ -237,7 +237,7 @@ namespace snapshot_container {
                     prev_slice.append(slice.begin(), slice.begin() + copy_index);
                     m_cum_slice_lengths[insert_point.slice() - 1] += copy_index;                    
                     slice.m_start_index += copy_index;
-                    return slice_point(insert_point.slice() - 1, prev_slice.size() + insert_point.index());
+                    return slice_point(insert_point.slice() - 1, prev_slice_size + insert_point.index());
                 }
                 
                 auto items_to_copy = copy_index;
@@ -585,13 +585,26 @@ namespace snapshot_container {
             return *(m_cum_slice_lengths.end() - 1);
         }
         
-        ssize_t distance(const slice_point& lhs, const slice_point& rhs) const
+        size_t num_slices() const
         {
-            auto lhs_index = container_index(lhs);
-            auto rhs_index = container_index(rhs);
-            return ssize_t(rhs_index - lhs_index);
+            return m_slices.size();
         }
-    
+        
+        double fragmentation_index() const
+        {
+            // Returns num_slices * (1.0 - (num elements)/(storage size))
+            // A value close to 0 indicates low fragmentation and a
+            // value close to num_slices indicates a high degree of fragmentation
+            double num_elements = 0.0;
+            double storage_size = 0.0;
+            for (auto& slice : m_slices)
+            {
+                num_elements += slice.size();
+                storage_size += slice.storage_size();
+            }
+            return num_slices() * (1.0 - (num_elements/storage_size));
+        }
+        
         template <typename IterType>
         slice_point append(const IterType& start_pos, const IterType& end_pos)
         {
