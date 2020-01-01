@@ -11,7 +11,13 @@ namespace snapshot_container {
     class iterator;
     
     struct _iterator_kernel_config_traits
-    {
+    {        
+        // These affect how new slices are created and compacted.
+        // Below lwm slices are created when convenient
+        // above lwm slices compaction begins to occur when iterating with a non-const iterator
+        // above hwm new slice creation is limited in favor of copying slices.
+        static constexpr size_t num_slices_lwm = 16;
+        static constexpr size_t num_slices_hwm = 64;
         struct cow_ops
         {            
             // Min size at which a slice will be split to effect a cow op
@@ -109,16 +115,22 @@ namespace snapshot_container {
         slice_point _iteration_cow_ops(const slice_point& iter_point)
         {            
             auto& slice = m_slices[iter_point.slice()];
-
-            // TODO: Revisit this logic and the next if. This needs refinement
-            if (slice.is_modifiable() && slice.size() < config_traits::cow_ops::min_split_size)
+            
+            // edge case issues
+            if (iter_point.index() == slice.size())
             {
-                return iter_point;
+                if (iter_point.slice() < m_slices.size() - 1)
+                    return _iteration_cow_ops(slice_point(iter_point.slice() + 1, 0));
+                else
+                    return iter_point;
             }
-                
-            if (slice.size() <= config_traits::cow_ops::max_merge_size)
+            
+            if (slice.is_modifiable() && m_slices.size() <= config_traits::num_slices_lwm)
+                return iter_point;
+            
+            if (_is_prev_slice_modifiable(iter_point.slice())) 
             {
-                if (_is_prev_slice_modifiable(iter_point.slice()))
+                if (slice.size() <= config_traits::cow_ops::max_merge_size)
                 {
                     auto& prev_slice = m_slices[iter_point.slice() - 1];
                     auto prev_slice_size = prev_slice.size();
@@ -126,44 +138,46 @@ namespace snapshot_container {
                     m_cum_slice_lengths[iter_point.slice() -1] = m_cum_slice_lengths[iter_point.slice()];
                     m_cum_slice_lengths.erase(m_cum_slice_lengths.begin() + iter_point.slice());
                     m_slices.erase(m_slices.begin() + iter_point.slice());
-                    return slice_point(iter_point.slice() - 1, prev_slice_size + iter_point.index());
+                    return slice_point(iter_point.slice() - 1, prev_slice_size + iter_point.index());                
                 }
-                else
+                else if (iter_point.index() <= slice.size() / config_traits::cow_ops::copy_fraction_denominator)
                 {
-                    auto new_slice = slice.copy(0);
-                    m_slices[iter_point.slice()] = new_slice;
-                    return iter_point;
+                    auto items_to_copy = slice.size() / config_traits::cow_ops::copy_fraction_denominator + 1;
+                    if (items_to_copy + iter_point.index() >= slice.size())
+                        items_to_copy = slice.size() - iter_point.index();                
+
+                    auto& prev_slice = m_slices[iter_point.slice() - 1];
+                    auto prev_slice_size = prev_slice.size();
+                    prev_slice.append(slice.begin(), slice.begin() + (iter_point.index() + items_to_copy));
+                    m_cum_slice_lengths[iter_point.slice() - 1] += items_to_copy + iter_point.index();                
+                    if (m_cum_slice_lengths[iter_point.slice() - 1] == m_cum_slice_lengths[iter_point.slice()])
+                    {
+                        // no elems left in element cow_point.slice so remove it
+                        m_cum_slice_lengths.erase(m_cum_slice_lengths.begin() + iter_point.slice());
+                        m_slices.erase(m_slices.begin() + iter_point.slice());                                    
+                    }
+                    else
+                    {
+                        m_slices[iter_point.slice()].m_start_index += iter_point.index() + items_to_copy;
+                    }
+                    return slice_point(iter_point.slice() - 1, prev_slice_size + iter_point.index());                    
                 }
             }
-            
-            // if the previous slice is modifiable and this access is immediately adjacent to it
-            // copy elems into the previous slice instead of creating a new one. This will help decrease
-            // fragmentation in some common iteration patterns.
-            if (_is_prev_slice_modifiable(iter_point.slice()) && iter_point.index() <= slice.size() / config_traits::cow_ops::copy_fraction_denominator)
-            {                
 
-                auto items_to_copy = slice.size() / config_traits::cow_ops::copy_fraction_denominator + 1;
-                if (items_to_copy + iter_point.index() >= slice.size())
-                    items_to_copy = slice.size() - iter_point.index();                
-
-                auto& prev_slice = m_slices[iter_point.slice() - 1];
-                auto prev_slice_size = prev_slice.size();
-                prev_slice.append(slice.begin(), slice.begin() + (iter_point.index() + items_to_copy));
-                m_cum_slice_lengths[iter_point.slice() - 1] += items_to_copy + iter_point.index();                
-                if (m_cum_slice_lengths[iter_point.slice() - 1] == m_cum_slice_lengths[iter_point.slice()])
-                {
-                    // no elems left in element cow_point.slice so remove it
-                    m_cum_slice_lengths.erase(m_cum_slice_lengths.begin() + iter_point.slice());
-                    m_slices.erase(m_slices.begin() + iter_point.slice());                                    
-                }
-                else
-                {
-                    m_slices[iter_point.slice()].m_start_index += iter_point.index() + items_to_copy;
-                }
-                return slice_point(iter_point.slice() - 1, prev_slice_size + iter_point.index());
+            // previous slice is not modifiable or current slice cannot be merged into it.
+            if (slice.is_modifiable())
+                return iter_point;
+           
+            // slice is not modifiable. If num slices is above hwm then copy it
+            if (m_slices.size() > config_traits::num_slices_hwm)            
+            {
+                // make a copy of the slice
+                auto new_slice = slice.copy(0);
+                m_slices[iter_point.slice()] = new_slice;
+                return iter_point;
             }
-            
-            // Insert a new slice containing iterpoint and extending some number of elements beyond it.
+        
+            // Copy out a range of elements into a new slice to allow for writable iteration over the copied slice
             if (iter_point.index() < slice.size()/2)
             {
                 // TODO: Improve this logic to copy less.
@@ -182,13 +196,14 @@ namespace snapshot_container {
                 if (items_to_copy < config_traits::cow_ops::slice_edge_offset)
                     items_to_copy = config_traits::cow_ops::slice_edge_offset;
                 
-                auto new_slice = slice.copy(slice.size() - items_to_copy);
+                auto slice_size = slice.size();
+                auto new_slice = slice.copy(slice_size - items_to_copy);
                 auto cum_slice_length = m_cum_slice_lengths[iter_point.slice()] - items_to_copy;
                 m_cum_slice_lengths.insert(m_cum_slice_lengths.begin() + iter_point.slice(), cum_slice_length);
                 slice.m_end_index-= items_to_copy;
                 m_slices.insert(m_slices.begin() + iter_point.slice() + 1, new_slice);
-                return slice_point(iter_point.slice() + 1, iter_point.index() - m_cum_slice_lengths[iter_point.slice()]);
-            }                       
+                return slice_point(iter_point.slice() + 1, iter_point.index() - (slice_size - items_to_copy));                
+            }                                   
         }
         
         // cow op related to insertion. The returned slice_point is reasonably optimal for an insertion op.
@@ -205,14 +220,16 @@ namespace snapshot_container {
             auto& slice = m_slices[insert_point.slice()];            
             if (slice.is_modifiable()) 
             {                
-                if (insert_point.index() <= slice.size()/copy_fraction || insert_point.index() + slice.size()/copy_fraction >= slice.size())
+                if (m_slices.size() > config_traits::num_slices_hwm || 
+                    insert_point.index() <= slice.size()/copy_fraction || insert_point.index() + slice.size()/copy_fraction >= slice.size())
                 {
                     // insert point reasonably near one end of the slice so inserts will be reasonably fast here.
+                    // also insert directly into slice if the number of slices is above hwm.
                     return insert_point;
                 }
             }
             
-            if (slice.size() <= config_traits::cow_ops::max_insertion_copy_size)
+            if (m_slices.size() > config_traits::num_slices_hwm || slice.size() <= config_traits::cow_ops::max_insertion_copy_size)
             {
                 auto new_slice = slice.copy(0);
                 m_slices[insert_point.slice()] = new_slice;
@@ -241,17 +258,17 @@ namespace snapshot_container {
                     return slice_point(insert_point.slice() - 1, prev_slice_size + insert_point.index());
                 }
                 
-                auto items_to_copy = copy_index;
+                auto items_to_copy = copy_index + 1;
                 auto new_slice = slice_t(m_storage_creator(slice.begin(), slice.begin() + items_to_copy), 0);
                 m_cum_slice_lengths.insert(m_cum_slice_lengths.begin() + insert_point.slice() + 1, m_cum_slice_lengths[insert_point.slice()]);
                 m_cum_slice_lengths[insert_point.slice()] = m_cum_slice_lengths[insert_point.slice()] - m_slices[insert_point.slice()].size() + items_to_copy;
                 m_slices.insert(m_slices.begin() + insert_point.slice(), new_slice);
                 
-                m_slices[insert_point.slice() + 1].m_start_index += copy_index;
+                m_slices[insert_point.slice() + 1].m_start_index += items_to_copy;
                 return slice_point(insert_point.slice(), insert_point.index());
             }                        
             else
-            {                
+            {                   
                 auto items_to_copy = slice.size() - copy_index;
                 auto new_slice = slice_t(m_storage_creator(slice.end() - items_to_copy, slice.end()), 0);
                 m_cum_slice_lengths.insert(m_cum_slice_lengths.begin() + insert_point.slice(), m_cum_slice_lengths[insert_point.slice()] - items_to_copy);
@@ -1051,13 +1068,14 @@ namespace snapshot_container {
                 throw std::logic_error("Invalid iterator dereference (npos)");
             
             m_iter_pos = m_kernel->slice_index(m_container_index);
-            m_iter_pos = m_kernel->_iteration_cow_ops(m_iter_pos);
+            auto new_iter_pos = m_kernel->_iteration_cow_ops(m_iter_pos);
             
-            if (m_iter_pos == m_kernel->end())
+            if (new_iter_pos == m_kernel->end())
                 throw std::logic_error("Invalid iterator dereference (end)");
             
             m_update_count = m_kernel->get_update_count();
             
+            m_iter_pos = new_iter_pos;
             m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
             return (*m_current_slice)[m_iter_pos.index()];
         }
