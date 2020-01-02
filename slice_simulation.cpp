@@ -226,7 +226,7 @@ slice_stats IKSimRunner::run(size_t slice_size, size_t num_slices, size_t num_it
 int main()
 {
     IKSimRunner runner;
-    auto results = runner.run(2048, 2, 40000);    
+    auto results = runner.run(2048, 2, 30000);    
     results.display_stats();    
     return 0;
 }
