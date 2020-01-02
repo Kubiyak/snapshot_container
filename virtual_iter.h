@@ -169,4 +169,18 @@ namespace virtual_iter
     {
         return arg.mem ();
     }
+
+
+    template <typename T, size_t MemSize>
+    class fwd_rand_iter : public fwd_iter<T, MemSize>
+    {
+        public:                    
+        typedef std::random_access_iterator_tag iterator_category;          
+        typedef fwd_iter<T, MemSize> base_t;
+        
+        template <typename Impl, typename WrappedIter>
+        fwd_rand_iter(Impl impl, WrappedIter iter):
+        base_t(impl, iter) {}
+    };
+    
 }
