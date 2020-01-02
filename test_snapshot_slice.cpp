@@ -13,22 +13,7 @@
 #include <memory>
 #include <algorithm>
 #include <tuple>
-#include <iterator>
 
-
-namespace std
-{
-   /* See https://en.cppreference.com/w/cpp/language/extending_std
-    * Extending std is permitted in order to provide customizations for certain std templates as long as doing so
-    * is not expressly prohibited and as long as the extension depends on at least 1 user defined type.
-    */
-    template <>
-    auto distance< virtual_iter::fwd_iter<int,48> >(virtual_iter::fwd_iter<int,48> lhs,
-                                                    virtual_iter::fwd_iter<int,48> rhs) -> virtual_iter::fwd_iter<int,48>::difference_type
-    {
-        return rhs - lhs;
-    }
-}
 
 
 using snapshot_container::_iterator_kernel;
