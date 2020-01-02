@@ -30,6 +30,22 @@
 #include <iostream>
 #include <random>
 #include <ctime>
+#include <iterator>
+
+
+namespace std
+{
+   /* See https://en.cppreference.com/w/cpp/language/extending_std
+    * Extending std is permitted in order to provide customizations for certain std templates as long as doing so
+    * is not expressly prohibited and as long as the extension depends on at least 1 user defined type.
+    */
+    template <>
+    auto distance< virtual_iter::fwd_iter<int,48> >(virtual_iter::fwd_iter<int,48> lhs,
+                                                    virtual_iter::fwd_iter<int,48> rhs) -> virtual_iter::fwd_iter<int,48>::difference_type
+    {
+        return rhs - lhs;
+    }
+}
 
 
 using snapshot_container::_iterator_kernel;
@@ -210,7 +226,7 @@ slice_stats IKSimRunner::run(size_t slice_size, size_t num_slices, size_t num_it
 int main()
 {
     IKSimRunner runner;
-    auto results = runner.run(2048, 2, 20000);    
+    auto results = runner.run(2048, 2, 40000);    
     results.display_stats();    
     return 0;
 }
