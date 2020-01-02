@@ -16,8 +16,8 @@ namespace snapshot_container {
         // Below lwm slices are created when convenient
         // above lwm slices compaction begins to occur when iterating with a non-const iterator
         // above hwm new slice creation is limited in favor of copying slices.
-        static constexpr size_t num_slices_lwm = 256;
-        static constexpr size_t num_slices_hwm = 512;
+        static constexpr size_t num_slices_lwm = 128;
+        static constexpr size_t num_slices_hwm = 256;
         struct cow_ops
         {            
             // Min size at which a slice will be split to effect a cow op
