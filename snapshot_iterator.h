@@ -55,7 +55,6 @@ namespace snapshot_container {
         static constexpr size_t npos = 0xFFFFFFFFFFFFFFFF;
         typedef StorageCreator storage_creator_t;
         typedef _slice<T> slice_t;
-        typedef typename slice_t::fwd_iter_type fwd_iter_type;
         typedef ConfigTraits config_traits;
         
         struct slice_point
@@ -327,7 +326,8 @@ namespace snapshot_container {
             return insert_pos;                
         }
         
-        slice_point insert(const slice_point& insert_before, const fwd_iter_type& start_pos, const fwd_iter_type& end_pos)
+        template <typename IterType>
+        slice_point insert(const slice_point& insert_before, const IterType& start_pos, const IterType& end_pos)
         {
             _incr_update_count();            
             slice_point insert_pos = _insert_cow_ops(insert_before);

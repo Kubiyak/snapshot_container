@@ -26,15 +26,19 @@ namespace snapshot_container
     {
     public:
 
-        typedef typename storage_base<T>::shared_base_t shared_base_t;
-        typedef typename storage_base<T>::fwd_iter_type fwd_iter_type;
-                
-        _slice(const shared_base_t &storage, size_t start_index, size_t end_index = storage_base<T>::npos):
+        // TODO: Generalize slices to work for non-random access storage types also.
+        typedef storage_base<T, 48, virtual_iter::rand_iter<T, 48>> storage_base_t;
+        typedef typename storage_base_t::shared_base_t shared_base_t;
+        typedef typename storage_base_t::fwd_iter_type fwd_iter_type;
+        typedef typename storage_base_t::rand_iter_type rand_iter_type;        
+        typedef typename storage_base_t::storage_iter_type storage_iter_type;
+        
+        _slice(const shared_base_t &storage, size_t start_index, size_t end_index = storage_base_t::npos):
             m_start_index(start_index),
             m_end_index(end_index),
             m_storage(storage)
         {
-            if (m_end_index == storage_base<T>::npos)
+            if (m_end_index == storage_base_t::npos)
                 m_end_index = m_storage->size();
         }
 
@@ -73,20 +77,26 @@ namespace snapshot_container
             m_storage->append(start_pos, end_pos);
             m_end_index = m_storage->size();
         }
+        
+        void append(const rand_iter_type& start_pos, const rand_iter_type& end_pos)
+        {
+            m_storage->append(start_pos, end_pos);
+            m_end_index = m_storage->size();
+        }
 
         bool is_modifiable () const
         {
             return (m_start_index == 0 && m_end_index == m_storage->size() && m_storage.use_count() == 1);
         }
                 
-        _slice<T> copy(size_t start_index, size_t end_index = storage_base<T>::npos) const
+        _slice<T> copy(size_t start_index, size_t end_index = storage_base_t::npos) const
         {
             // This is how to obtain an empty copy (i.e. an empty slice based on the same impl
             // as this slice.
             if (start_index > end_index)
                 start_index = end_index;
 
-            if (end_index == storage_base<T>::npos)
+            if (end_index == storage_base_t::npos)
                 end_index = size();
             
             shared_base_t storage_copy = m_storage->copy(m_start_index + start_index, m_start_index + end_index);
@@ -107,6 +117,12 @@ namespace snapshot_container
             m_end_index = m_storage->size();
         }
 
+        void insert(size_t index, const rand_iter_type& startPos, const rand_iter_type& endPos)
+        {
+            m_storage->insert(m_start_index + index, startPos, endPos);
+            m_end_index = m_storage->size();
+        }        
+        
         // Remove can only be called on slices extending to the end of the storage element.
         virtual void remove(size_t index)
         {
@@ -127,10 +143,10 @@ namespace snapshot_container
 
         shared_base_t& operator->() {return m_storage;}
 
-        fwd_iter_type begin() {return m_storage->iterator(m_start_index);}
-        fwd_iter_type end() {return m_storage->iterator(m_end_index);}
-        const fwd_iter_type begin() const {return m_storage->iterator(m_start_index);}
-        const fwd_iter_type end() const {return m_storage->iterator(m_end_index);}
+        storage_iter_type begin() {return m_storage->iterator(m_start_index);}
+        storage_iter_type end() {return m_storage->iterator(m_end_index);}
+        const storage_iter_type begin() const {return m_storage->iterator(m_start_index);}
+        const storage_iter_type end() const {return m_storage->iterator(m_end_index);}
 
         size_t storage_size() const {return m_storage->size();}
 

@@ -12,27 +12,31 @@
 namespace snapshot_container
 {
     // The basic functions that the storage type must support.
-    template <typename T>
+    template <typename T, size_t MemSize, typename StorageIterType>
     class storage_base
     {
     public:
 
         static const size_t npos = 0xFFFFFFFFFFFFFFFF;
-        static const size_t iter_mem_size = 48;
+        static const size_t iter_mem_size = MemSize;
         typedef T value_type;
-        typedef std::shared_ptr<storage_base<value_type>> shared_base_t;
+        typedef std::shared_ptr<storage_base<value_type, MemSize, StorageIterType>> shared_base_t;
         typedef virtual_iter::fwd_iter<value_type, iter_mem_size> fwd_iter_type;
-
+        typedef virtual_iter::rand_iter<value_type, iter_mem_size> rand_iter_type;
+        typedef StorageIterType storage_iter_type;
+        
         virtual void append(const value_type&) = 0;
 
         virtual void append(const fwd_iter_type& start_pos, const fwd_iter_type& end_pos) = 0;
-
+        virtual void append(const rand_iter_type& start_pos, const rand_iter_type& end_pos) = 0;
+        
         // Create a deep copy of the object between startIndex and endIndex and return it.
         virtual shared_base_t copy(size_t start_index = 0, size_t end_index = npos) const = 0;
 
         virtual void insert(size_t index, const value_type&) = 0;
 
         virtual void insert(size_t index, const fwd_iter_type& start_pos, const fwd_iter_type& end_pos) = 0;
+        virtual void insert(size_t index, const rand_iter_type& start_pos, const rand_iter_type& end_pos) = 0;
 
         virtual void remove(size_t index) = 0;
 
@@ -47,13 +51,13 @@ namespace snapshot_container
         virtual ~storage_base()
         {}
 
-        virtual fwd_iter_type begin() = 0;
-        virtual fwd_iter_type end() = 0;
-        virtual fwd_iter_type iterator(size_t offset) = 0;
+        virtual storage_iter_type begin() = 0;
+        virtual storage_iter_type end() = 0;
+        virtual storage_iter_type iterator(size_t offset) = 0;
 
-        virtual const fwd_iter_type begin() const = 0;
-        virtual const fwd_iter_type end() const = 0;
-        virtual const fwd_iter_type iterator(size_t offset) const = 0;
+        virtual const storage_iter_type begin() const = 0;
+        virtual const storage_iter_type end() const = 0;
+        virtual const storage_iter_type iterator(size_t offset) const = 0;
 
     protected:
         // Must create this via a derivation.
@@ -68,16 +72,20 @@ namespace snapshot_container
     // by the higher level abstractions is that appending records to the storage is efficient. Inserting to the middle
     // is permissible.
     template <typename T>
-    class deque_storage : public storage_base<T>
+    class deque_storage : public storage_base<T, 48, virtual_iter::rand_iter<T,48>>
     {
     public:
 
         static const size_t npos = 0xFFFFFFFFFFFFFFFF;
-        using storage_base<T>::iter_mem_size;
+        typedef storage_base<T, 48, virtual_iter::rand_iter<T,48>> storage_base_t;
+        using storage_base_t::iter_mem_size;
         typedef T value_type;
         typedef std::shared_ptr<deque_storage<T>> shared_t;
-        typedef std::shared_ptr<storage_base<T>> shared_base_t;
-        typedef typename storage_base<T>::fwd_iter_type fwd_iter_type;
+        typedef std::shared_ptr<storage_base_t> shared_base_t;
+        using fwd_iter_type = typename storage_base_t::fwd_iter_type;
+        using rand_iter_type = typename storage_base_t::rand_iter_type;
+        typedef virtual_iter::rand_iter<T,48> storage_iter_type;
+        
 
         void append(const T& value) override
         {
@@ -98,6 +106,12 @@ namespace snapshot_container
             start_pos_copy.visit (end_pos, f);
         }
 
+        void append(const rand_iter_type& start_pos, const rand_iter_type& end_pos) override
+        {
+            for (auto current_pos = start_pos; current_pos != end_pos; ++current_pos)
+                m_data.push_back(*current_pos);            
+        }
+        
         shared_base_t copy(size_t start_index = 0, size_t end_index = npos) const override;
 
         void insert(size_t index, const T& value) override
@@ -110,6 +124,11 @@ namespace snapshot_container
             m_data.insert(m_data.begin() + index, start_pos, end_pos);
         }
 
+        void insert(size_t index, const rand_iter_type& start_pos, const rand_iter_type& end_pos) override
+        {
+            m_data.insert(m_data.begin() + index, start_pos, end_pos);
+        }
+        
         void remove(size_t index) override
         {
             m_data.erase(m_data.begin() + index);
@@ -129,38 +148,38 @@ namespace snapshot_container
         T& operator[](size_t index) override
         {return m_data[index];}
 
-        const fwd_iter_type begin() const override
+        const storage_iter_type begin() const override
         {
-            return fwd_iter_type(_iter_impl, m_data.begin());
+            return storage_iter_type(_iter_impl, m_data.begin());
         }
 
-        const fwd_iter_type end() const override
+        const storage_iter_type end() const override
         {
-            return fwd_iter_type(_iter_impl, m_data.end());
+            return storage_iter_type(_iter_impl, m_data.end());
         }
 
-        const fwd_iter_type iterator(size_t offset) const override
+        const storage_iter_type iterator(size_t offset) const override
         {
             if (offset > m_data.size())
                 offset = m_data.size();
-            return fwd_iter_type(_iter_impl, m_data.begin() + offset);
+            return storage_iter_type(_iter_impl, m_data.begin() + offset);
         }
 
-        fwd_iter_type begin() override
+        storage_iter_type begin() override
         {
-            return fwd_iter_type(_iter_impl, m_data.begin());
+            return storage_iter_type(_iter_impl, m_data.begin());
         }
 
-        fwd_iter_type end() override
+        storage_iter_type end() override
         {
-            return fwd_iter_type(_iter_impl, m_data.end());
+            return storage_iter_type(_iter_impl, m_data.end());
         }
 
-        fwd_iter_type iterator(size_t offset) override
+        storage_iter_type iterator(size_t offset) override
         {
             if (offset > m_data.size())
                 offset = m_data.size();
-            return fwd_iter_type(_iter_impl, m_data.begin() + offset);
+            return storage_iter_type(_iter_impl, m_data.begin() + offset);
         }
 
         static shared_base_t create();
@@ -177,7 +196,7 @@ namespace snapshot_container
         template <typename InputIter>
         deque_storage(InputIter start_pos, InputIter end_pos);
         
-        static virtual_iter::std_fwd_iter_impl<std::deque<value_type>, iter_mem_size> _iter_impl;        
+        static virtual_iter::std_rand_iter_impl<std::deque<value_type>, iter_mem_size> _iter_impl;        
         std::deque<T> m_data;
     };
 
@@ -212,7 +231,7 @@ namespace snapshot_container
     }
 
     template <typename T>
-    virtual_iter::std_fwd_iter_impl<std::deque<T>, deque_storage<T>::iter_mem_size> deque_storage<T>::_iter_impl;
+    virtual_iter::std_rand_iter_impl<std::deque<T>, deque_storage<T>::iter_mem_size> deque_storage<T>::_iter_impl;
 
     
     // Storage creation may need to be stateful. To support this, the higher level abstraction takes a storage creator

@@ -131,9 +131,9 @@ TEST_CASE("remove tests", "[iterator_kernel]") {
     REQUIRE(ik2->size() == 2048);
     
     std::vector<int> new_values {10000,10001,10002,10003};
-    auto impl = virtual_iter::std_fwd_iter_impl<std::vector<int>, 48>();
-    virtual_iter::fwd_iter<int, 48> itr (impl, new_values.begin());
-    virtual_iter::fwd_iter<int, 48> end_itr (impl, new_values.end());
+    auto impl = virtual_iter::std_rand_iter_impl<std::vector<int>, 48>();
+    virtual_iter::rand_iter<int, 48> itr (impl, new_values.begin());
+    virtual_iter::rand_iter<int, 48> end_itr (impl, new_values.end());
         
     auto insert_pos = ik2->slice_index(79);
     ik2->insert(insert_pos, itr, end_itr);

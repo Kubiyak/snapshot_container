@@ -26,6 +26,7 @@ namespace virtual_iter
     public:
 
         typedef IteratorType iterator_type;
+        typedef ssize_t difference_type;
         
         virtual void instantiate(iterator_type& lhs, const iterator_type& rhs) const = 0;
 
@@ -37,11 +38,11 @@ namespace virtual_iter
 
         virtual bool equals(const iterator_type& lhs, const iterator_type& rhs) const = 0;
 
-        virtual ssize_t distance(const iterator_type& lhs,
-                                 const iterator_type& rhs) const = 0;
+        virtual difference_type distance(const iterator_type& lhs,
+                                         const iterator_type& rhs) const = 0;
 
-        virtual iterator_type plus(const iterator_type& lhs, ssize_t offset) const = 0;
-        virtual iterator_type minus(const iterator_type& lhs, ssize_t offset) const = 0;
+        virtual iterator_type plus(const iterator_type& lhs, difference_type offset) const = 0;
+        virtual iterator_type minus(const iterator_type& lhs, difference_type offset) const = 0;
         
         virtual const T* pointer(const iterator_type& arg) const = 0;
 
@@ -51,9 +52,36 @@ namespace virtual_iter
 
         virtual void visit(void* iter, void* endItr, std::function<bool(const T&)>&) const = 0;
 
-        void* mem(const iterator_type& arg) const;
+        void* mem(const iterator_type& arg) const
+        {
+            return arg.mem ();
+        }
+               
     };
 
+    
+    template <typename T, size_t MemSize, typename IteratorType>
+    class _rand_iter_impl_base : virtual public _fwd_iter_impl_base<T, MemSize, IteratorType>
+    {
+    public:
+        typedef IteratorType iterator_type;
+        typedef _fwd_iter_impl_base<T, MemSize, IteratorType> base_t;
+        using difference_type = typename base_t::difference_type;
+        
+        // In addition to the features provided by forward iterators,
+        // random access iterators need operator -- , +=, -=
+        virtual iterator_type& minusminus(iterator_type& obj) = 0;
+        virtual const iterator_type& minusminus(const iterator_type& obj) const = 0;
+        
+        virtual iterator_type& pluseq(iterator_type& obj, difference_type incr) = 0;
+        virtual const iterator_type& pluseq(const iterator_type& obj, difference_type incr) const = 0;
+        
+        virtual iterator_type& minuseq(iterator_type& obj, difference_type decr) = 0;
+        virtual const iterator_type& minuseq(const iterator_type& obj, difference_type decr) const = 0;
+                
+        using base_t::mem;        
+    };
+    
     
     template <typename T, size_t MemSize, typename IterType, typename BaseImpl>
     class iter_base
@@ -154,54 +182,76 @@ namespace virtual_iter
         using difference_type = typename base_t::difference_type;
         using pointer = typename base_t::pointer;
         using reference = typename base_t::reference;
-
+        using base_impl_t = typename base_t::base_impl_t;
+        
         template <typename Impl, typename WrappedIter>
-        fwd_iter(Impl impl, WrappedIter iter);
-        fwd_iter(const fwd_iter<T, MemSize>& rhs);
-        ~fwd_iter();
-    };
-
-    
-    template <typename T, size_t MemSize>
-    template <typename Impl, typename WrappedIter>
-    fwd_iter<T, MemSize>::fwd_iter(Impl impl, WrappedIter iter):
-        base_t(impl.shared_forward_iterator_impl (iter))
-    {
-        impl.instantiate (*this, iter);    
-    }
-    
-    
-    template <typename T, size_t MemSize>
-    fwd_iter<T, MemSize>::fwd_iter(const fwd_iter<T, MemSize>& rhs):
+        fwd_iter(Impl impl, WrappedIter iter):
+        base_t(impl.create_fwd_iter_impl(iter))
+        {
+            impl.instantiate (*this, iter);    
+        }
+                
+        fwd_iter(const fwd_iter<T, MemSize>& rhs):
         base_t(rhs.m_impl)
-    {
-        base_t::m_impl->instantiate (*this, rhs);
-    }
-
+        {
+            base_t::m_impl->instantiate (*this, rhs);    
+        }
+                
+        ~fwd_iter()
+        {
+            base_t::m_impl->destroy(*this);            
+        }    
+    };
     
-    template <typename T, size_t MemSize>
-    fwd_iter<T, MemSize>::~fwd_iter()
-    {
-        base_t::m_impl->destroy(*this);
-    }
-    
-    
-    template <typename T, size_t IterMemSize, typename IterType>
-    void* _fwd_iter_impl_base<T, IterMemSize, IterType>::mem(const IterType& arg) const
-    {
-        return arg.mem ();
-    }
-
 
     template <typename T, size_t MemSize>
-    class fwd_rand_iter : public fwd_iter<T, MemSize>
+    class rand_iter : public iter_base<T, MemSize, rand_iter<T, MemSize>, _rand_iter_impl_base<T, MemSize, rand_iter<T, MemSize>>>
     {
         public:                    
         typedef std::random_access_iterator_tag iterator_category;          
-        typedef fwd_iter<T, MemSize> base_t;
+        typedef iter_base<T, MemSize, rand_iter<T, MemSize>, _rand_iter_impl_base<T, MemSize, rand_iter<T, MemSize>>> base_t;
+        using value_type = typename base_t::value_type;
+        using difference_type = typename base_t::difference_type;
+        using pointer = typename base_t::pointer;
+        using reference = typename base_t::reference;
+        using base_impl_t = typename base_t::base_impl_t;
+        
+        friend _fwd_iter_impl_base<T, MemSize, rand_iter<T, MemSize>>;
         
         template <typename Impl, typename WrappedIter>
-        fwd_rand_iter(Impl impl, WrappedIter iter):
-        base_t(impl, iter) {}
+        rand_iter(Impl impl, WrappedIter iter):
+            base_t(impl.create_rand_iter_impl(iter))
+        {
+            impl.instantiate (*this, iter); 
+        }
+        
+        rand_iter(const rand_iter<T, MemSize>& rhs):
+        base_t(rhs.m_impl)
+        {
+            base_t::m_impl->instantiate (*this, rhs);    
+        }
+        
+        ~rand_iter()
+        {
+            base_t::m_impl->destroy(*this);
+        }
+                
+        rand_iter& operator--()
+        {return base_t::m_impl->minusminus(*this);}
+        
+        const rand_iter& operator--() const
+        {return base_t::m_impl->minusminus(*this);}
+        
+        rand_iter& operator+=(difference_type incr)
+        {return base_t::m_impl->pluseq(*this, incr);}
+    
+        const rand_iter& operator+=(difference_type incr) const
+        {return base_t::m_impl->pluseq(*this, incr);}
+        
+        rand_iter& operator-=(difference_type decr)
+        {return base_t::m_impl->minuseq(*this, decr);}
+        
+        const rand_iter& operator-=(difference_type decr) const
+        {return base_t::m_impl->minuseq(*this, decr);}        
     };    
 }

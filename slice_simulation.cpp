@@ -113,9 +113,9 @@ struct IKSimRunner
         auto ik_size = ik->size();
         auto num_items_to_insert = ik_size > 1000 ? ik_size / 100 : 10;
         std::vector<int> items_to_insert(num_items_to_insert, 0xdeadbeef);
-        auto impl = virtual_iter::std_fwd_iter_impl<std::vector<int>, 48>();
-        virtual_iter::fwd_rand_iter<int, 48> itr (impl, items_to_insert.begin());
-        virtual_iter::fwd_rand_iter<int, 48> end_itr (impl, items_to_insert.end());
+        auto impl = virtual_iter::vector_rand_iter_impl<int>();
+        virtual_iter::rand_iter<int, 48> itr (impl, items_to_insert.begin());
+        virtual_iter::rand_iter<int, 48> end_itr (impl, items_to_insert.end());
         auto insert_index = distrib(generator) % ik_size;
         if (std::distance(itr, end_itr) != items_to_insert.size())
         {
