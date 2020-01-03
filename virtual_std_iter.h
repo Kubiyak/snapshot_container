@@ -14,11 +14,12 @@ namespace virtual_iter
 {
     // Implementation of fwd_iter around some c++ std container types.
     template <typename Container, size_t IterMemSize = 32>
-    class std_fwd_iter_impl : public _fwd_iter_impl_base<typename Container::value_type, IterMemSize>
+    class std_fwd_iter_impl : public _fwd_iter_impl_base<typename Container::value_type, IterMemSize, fwd_iter<typename Container::value_type, IterMemSize>>
     {
     public:
         typedef typename Container::value_type value_type;
-        typedef std::shared_ptr<_fwd_iter_impl_base<value_type, IterMemSize>> shared_base_t;
+        typedef _fwd_iter_impl_base<value_type, IterMemSize, fwd_iter<typename Container::value_type, IterMemSize>> fwd_iter_impl_base_t;
+        typedef std::shared_ptr<fwd_iter_impl_base_t> shared_base_t;
         typedef fwd_iter<value_type, IterMemSize> iterator_type;
 
         template <typename IterType>
@@ -42,23 +43,23 @@ namespace virtual_iter
         void instantiate(iterator_type& arg, IterType& itr)
         {
             static_assert (sizeof (_IterStore) <= IterMemSize, "container_fwd_iter_impl: IterMemSize too small.");
-            void* buffer = _fwd_iter_impl_base<value_type, IterMemSize>::mem (arg);
+            void* buffer = fwd_iter_impl_base_t::mem (arg);
             _IterStore* store = new (buffer) _IterStore (itr);
         }
 
         void instantiate(fwd_iter<value_type, IterMemSize>& lhs,
                          const fwd_iter<value_type, IterMemSize>& rhs) const override
         {
-            auto rhsStore = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (rhs));
+            auto rhsStore = reinterpret_cast<_IterStore*>(fwd_iter_impl_base_t::mem (rhs));
 
-            void* buffer = _fwd_iter_impl_base<value_type, IterMemSize>::mem (lhs);
+            void* buffer = fwd_iter_impl_base_t::mem (lhs);
             _IterStore* lhsStore = new (buffer) _IterStore (rhsStore->m_itr);
         }
 
         const fwd_iter<value_type, IterMemSize>&
         plusplus(const fwd_iter<value_type, IterMemSize>& obj) const override
         {
-            auto iterStore = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (obj));
+            auto iterStore = reinterpret_cast<_IterStore*>(fwd_iter_impl_base_t::mem (obj));
 
             ++iterStore->m_itr;
             return obj;
@@ -66,7 +67,7 @@ namespace virtual_iter
 
         iterator_type& plusplus(iterator_type& obj) const override
         {
-            auto iterStore = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (obj));
+            auto iterStore = reinterpret_cast<_IterStore*>(fwd_iter_impl_base_t::mem (obj));
             ++iterStore->m_itr;
             return obj;
         }
@@ -74,15 +75,15 @@ namespace virtual_iter
         void destroy(iterator_type& obj) const override
         {
             _IterStore* iterStore =
-                    reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (obj));
+                    reinterpret_cast<_IterStore*>(fwd_iter_impl_base_t::mem (obj));
             iterStore->~_IterStore();
         }
 
         bool equals(const iterator_type& lhs, const iterator_type& rhs) const override
         {
-            auto lhs_store = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (
+            auto lhs_store = reinterpret_cast<_IterStore*>(fwd_iter_impl_base_t::mem (
                     lhs));
-            auto rhs_store = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (
+            auto rhs_store = reinterpret_cast<_IterStore*>(fwd_iter_impl_base_t::mem (
                     rhs));
 
             return lhs_store->m_itr == rhs_store->m_itr;
@@ -90,15 +91,15 @@ namespace virtual_iter
 
         ssize_t distance(const iterator_type& lhs, const iterator_type& rhs) const override
         {
-            auto lhs_store = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (lhs));
-            auto rhs_store = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (rhs));
+            auto lhs_store = reinterpret_cast<_IterStore*>(fwd_iter_impl_base_t::mem (lhs));
+            auto rhs_store = reinterpret_cast<_IterStore*>(fwd_iter_impl_base_t::mem (rhs));
 
             return lhs_store->m_itr - rhs_store->m_itr;
         }
 
         virtual iterator_type plus(const iterator_type& lhs, ssize_t offset) const override
         {
-            auto iter_store = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (lhs));
+            auto iter_store = reinterpret_cast<_IterStore*>(fwd_iter_impl_base_t::mem (lhs));
             auto new_iter = iter_store->m_itr + offset;
             return iterator_type (std_fwd_iter_impl<Container, IterMemSize> (),
                                   new_iter);
@@ -106,20 +107,20 @@ namespace virtual_iter
 
         virtual iterator_type minus(const iterator_type& lhs, ssize_t offset) const override
         {
-            auto iter_store = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (lhs));            
+            auto iter_store = reinterpret_cast<_IterStore*>(fwd_iter_impl_base_t::mem (lhs));            
             return iterator_type (std_fwd_iter_impl<Container, IterMemSize> (),
                                   iter_store->m_itr - offset);
         }
         
         virtual const value_type* pointer(const iterator_type& arg) const override
         {
-            auto iter_store = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (arg));
+            auto iter_store = reinterpret_cast<_IterStore*>(fwd_iter_impl_base_t::mem (arg));
             return (iter_store->m_itr).operator-> ();
         }
 
         virtual const value_type& reference(const iterator_type& arg) const override
         {
-            auto iter_store = reinterpret_cast<_IterStore*>(_fwd_iter_impl_base<value_type, IterMemSize>::mem (arg));
+            auto iter_store = reinterpret_cast<_IterStore*>(fwd_iter_impl_base_t::mem (arg));
             return (iter_store->m_itr).operator* ();
         }
 
