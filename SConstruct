@@ -17,3 +17,11 @@ slice_simulation = slice_simulation_env.Program("build/slice_simulation/slice_si
                                                 ['build/slice_simulation/slice_simulation.cpp'])
 Depends('build/slice_simulation/slice_simulation', header_files)
 slice_simulation_env.Alias('slice_simulation', slice_simulation)
+
+
+container_test_env = Environment(CXX="g++-8", CXXFLAGS="--std=c++17 -g")
+container_test_env.VariantDir("build/container_test", "./")
+container_test = container_test_env.Program("build/container_test/container_test",
+                                            ["build/container_test/container_test.cpp"])
+Depends("build/container_test/container_test", header_files)
+container_test_env.Alias("container_test", container_test)

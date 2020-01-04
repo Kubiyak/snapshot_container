@@ -8,7 +8,7 @@
 namespace snapshot_container {
 
     template<typename T, typename C>
-    class iterator;
+    class _iterator;
     
     struct _iterator_kernel_config_traits
     {        
@@ -48,7 +48,7 @@ namespace snapshot_container {
     class _iterator_kernel : public std::enable_shared_from_this<_iterator_kernel<T,StorageCreator>> {
     public:
         
-        friend iterator<T, StorageCreator>;
+        friend _iterator<T, StorageCreator>;
         
         // Implementation details for the iterator type for snapshot_container. Must be created via 
         // shared ptr. Both the container type and iterators for the container will keep a shared ptr to iterator_kernel.
@@ -97,9 +97,26 @@ namespace snapshot_container {
             m_cum_slice_lengths.push_back(m_slices[0].size());
         }
 
+        // Note: These functions make a shallow copy. This is useful for creating  snapshots.
+        // Use the deep_copy function to actually copy
         _iterator_kernel(const _iterator_kernel& rhs) = default;
-        _iterator_kernel& operator= (const _iterator_kernel& rhs) = default;
-        
+        _iterator_kernel& operator=(const _iterator_kernel& rhs)
+        {
+            _incr_update_count();
+            m_slices = rhs.m_slices;
+            m_cum_slice_lengths = rhs.m_cum_slice_lengths;
+        }
+                
+        void deep_copy(const _iterator_kernel& rhs)
+        {
+            _incr_update_count();
+            m_cum_slice_lengths = rhs.m_cum_slice_lengths;
+            for (auto& slice: rhs.m_slices)
+            {
+                m_slices.push_back(slice_t(m_storage_creator(slice.begin(), slice.end()), 0));
+            }
+        }
+                
         bool _is_prev_slice_modifiable(size_t slice) const
         {
             if (slice > 0 && m_slices[slice - 1].is_modifiable())
@@ -600,7 +617,7 @@ namespace snapshot_container {
                 throw std::logic_error("Called create with an empty shared pointer");
         }
         
-        size_t size() const
+        size_t size() const noexcept
         {
             return *(m_cum_slice_lengths.end() - 1);
         }
@@ -633,6 +650,8 @@ namespace snapshot_container {
             // returns the position of first element appended. Returns end() if start_pos == end_pos
             if (start_pos == end_pos)
                 return end();
+            
+            _incr_update_count();
             
             auto pre_append_size = size();
             if (pre_append_size == 0)
@@ -691,6 +710,45 @@ namespace snapshot_container {
             return true;
         }
         
+        void clear()
+        {
+            _incr_update_count();
+            m_slices.clear();
+            m_cum_slice_lengths.clear();
+            
+            // must always be a slice in the deck
+            m_cum_slice_lengths.push_back(0);
+            m_slices.push_back(slice_t(m_storage_creator(), 0));            
+        }
+        
+        void push_back(const T& t)
+        {
+            _incr_update_count();
+            m_slices[m_slices.size() - 1].append(t);
+        }
+        
+        void pop_back()
+        {
+            // TODO: Improve this logic if possible
+            if (size())
+                remove(slice_index(size() - 1));
+        }
+        
+        void swap(_iterator_kernel& rhs) noexcept
+        {
+            _incr_update_count();
+            rhs._incr_update_count();
+            
+            auto slices = m_slices;
+            auto lengths = m_cum_slice_lengths;
+            
+            m_slices = rhs.m_slices;
+            m_cum_slice_lengths = rhs.m_cum_slice_lengths;
+            
+            rhs.m_slices = slices;
+            rhs.m_cum_slice_lengths = lengths;            
+        }
+        
 #ifndef _SNAPSHOTCONTAINER_TEST        
     private:
 #endif        
@@ -726,7 +784,7 @@ namespace snapshot_container {
     };
     
     template<typename T, typename StorageCreator>
-    class iterator {
+    class _iterator {
     public:
         static constexpr size_t npos = 0xFFFFFFFFFFFFFFFF;
         using iterator_kernel_t = _iterator_kernel<T, StorageCreator>;
@@ -738,10 +796,10 @@ namespace snapshot_container {
         typedef T* pointer;
         typedef T& reference;
 
-        iterator() = default;
+        _iterator() = default;
 
         // TODO: Only the higher container type should be able to use this constructor directly.
-        iterator(const std::shared_ptr<iterator_kernel_t>& kernel, const slice_point& iter_pos) :
+        _iterator(const std::shared_ptr<iterator_kernel_t>& kernel, const slice_point& iter_pos) :
         m_kernel(kernel),
         m_iter_pos(iter_pos),
         m_current_slice(nullptr),
@@ -751,7 +809,7 @@ namespace snapshot_container {
             m_container_index = m_kernel->container_index(m_iter_pos);
         }
 
-        iterator(const std::shared_ptr<iterator_kernel_t>& kernel, size_t container_index):
+        _iterator(const std::shared_ptr<iterator_kernel_t>& kernel, size_t container_index):
             m_kernel(kernel),
             m_iter_pos(),
             m_current_slice(nullptr),
@@ -762,73 +820,83 @@ namespace snapshot_container {
                 m_iter_pos = m_kernel->slice_index(container_index);
         }
                 
-        iterator(const iterator& rhs) = default;
-        iterator& operator=(const iterator& rhs) = default;
+        // Used by higher level container type
+        slice_point pos() const
+        {
+            if (m_update_count == m_kernel->get_update_count())
+                return m_iter_pos;
+            
+            _prefix_plusplus_impl(0);
+            return m_iter_pos;
+        }
         
-        iterator& operator+=(ssize_t incr)
+        _iterator(const _iterator& rhs) = default;
+        _iterator& operator=(const _iterator& rhs) = default;
+        
+        _iterator& operator+=(ssize_t incr)
         {
             return _prefix_plusplus_impl(incr);
         }
         
-        const iterator& operator+=(ssize_t incr) const
+        const _iterator& operator+=(ssize_t incr) const
         {
             return _prefix_plusplus_impl(incr);
         }
         
-        iterator& operator -=(ssize_t decr)
+        _iterator& operator -=(ssize_t decr)
         {
             return _prefix_minusminus_impl(decr);
         }
         
-        const iterator& operator-=(ssize_t decr) const
+        const _iterator& operator-=(ssize_t decr) const
         {
             return _prefix_minusminus_impl(decr);
         }
                 
-        const iterator& operator++() const 
+        const _iterator& operator++() const 
         {
             return _prefix_plusplus_impl();
         }
 
-        iterator& operator++() 
+        _iterator& operator++() 
         {
             return _prefix_plusplus_impl();
         }
 
-        const iterator operator++(int) const
+        const _iterator operator++(int) const
         {
-            iterator pos(*this);
+            _iterator pos(*this);
             _prefix_plusplus_impl();
             return pos;
         }
         
-        iterator operator++(int)
+        _iterator operator++(int)
         {
-            iterator pos(*this);
+            _iterator pos(*this);
             _prefix_plusplus_impl();
             return pos;
         }
         
-        iterator& operator--()
+        _iterator& operator--()
         {
             return _prefix_minusminus_impl();
         }
         
-        const iterator& operator--() const
+        const _iterator& operator--() const
         {
             return _prefix_minusminus_impl();
         }
         
-        iterator operator--(int)
+        _iterator operator--(int)
         {
-            iterator pos(*this);
+            _iterator pos(*this);
             _prefix_minusminus_impl();
             return pos;
         }        
         
-        const iterator operator--(int) const
+        const _iterator operator--(int) const
         {
-            iterator pos(*this);
+            _iterator pos(*this);
             _prefix_minusminus_impl();
             return pos;
         }          
@@ -853,7 +921,7 @@ namespace snapshot_container {
             return &(_dereference_impl());
         }
         
-        bool operator < (const iterator& rhs) const
+        bool operator < (const _iterator& rhs) const
         {
             if (not (m_kernel && m_kernel == rhs.m_kernel))
                 return false;
@@ -866,7 +934,7 @@ namespace snapshot_container {
             return m_container_index < rhs.m_container_index;            
         }
         
-        bool operator > (const iterator& rhs) const
+        bool operator > (const _iterator& rhs) const
         {
             if (not (m_kernel && m_kernel == rhs.m_kernel))
                 return false;
@@ -879,7 +947,7 @@ namespace snapshot_container {
             return m_container_index > rhs.m_container_index;            
         }
         
-        bool operator <= (const iterator& rhs) const
+        bool operator <= (const _iterator& rhs) const
         {
             if (not (m_kernel && m_kernel == rhs.m_kernel))
                 return false;            
@@ -887,7 +955,7 @@ namespace snapshot_container {
             return m_container_index <= rhs.m_container_index;
         }
         
-        bool operator >= (const iterator& rhs) const
+        bool operator >= (const _iterator& rhs) const
         {
             if (not (m_kernel && m_kernel == rhs.m_kernel))
                 return false;            
@@ -895,7 +963,7 @@ namespace snapshot_container {
             return m_container_index >= rhs.m_container_index;
         }
         
-        bool operator == (const iterator& rhs) const
+        bool operator == (const _iterator& rhs) const
         {
             if (not (m_kernel && m_kernel == rhs.m_kernel))
                 return false;
@@ -903,12 +971,12 @@ namespace snapshot_container {
             return m_container_index == rhs.m_container_index;
         }
         
-        bool operator != (const iterator& rhs) const
+        bool operator != (const _iterator& rhs) const
         {
             return !(*this == rhs);
         }
         
-        difference_type operator-(const iterator& rhs) const 
+        difference_type operator-(const _iterator& rhs) const 
         {
             if (not m_kernel)
                 return 0x7FFFFFFFFFFFFFFF;
@@ -919,40 +987,40 @@ namespace snapshot_container {
                 throw std::logic_error("Invalid iterator subtraction");
         }
 
-        iterator operator-(difference_type offset)
+        _iterator operator-(difference_type offset)
         {
             if (not m_kernel)
-                return iterator();
+                return _iterator();
                 
             if (offset > m_container_index)
-                return iterator(m_kernel, npos);
+                return _iterator(m_kernel, npos);
                         
-            return iterator(m_kernel, m_container_index - offset);
+            return _iterator(m_kernel, m_container_index - offset);
         }        
         
-        const iterator operator-(difference_type offset) const 
+        const _iterator operator-(difference_type offset) const 
         {
-            return const_cast<iterator*>(this)->operator-(offset);
+            return const_cast<_iterator*>(this)->operator-(offset);
         }
 
-        iterator operator+(difference_type offset)
+        _iterator operator+(difference_type offset)
         {        
             if (not m_kernel)
-                return iterator();
+                return _iterator();
         
             if (m_container_index + offset > m_kernel->size())
-                return iterator(m_kernel, m_kernel->size());
-            return iterator(m_kernel, m_container_index + offset);
+                return _iterator(m_kernel, m_kernel->size());
+            return _iterator(m_kernel, m_container_index + offset);
         }
 
-        const iterator operator+(difference_type offset) const
+        const _iterator operator+(difference_type offset) const
         {        
-            return const_cast<iterator*>(this)->operator+(offset);
+            return const_cast<_iterator*>(this)->operator+(offset);
         }
                 
     protected:
                        
-        iterator& _prefix_plusplus_impl(ssize_t incr=1)
+        _iterator& _prefix_plusplus_impl(ssize_t incr=1)
         {
             if (not m_kernel)
                 return *this;
@@ -995,12 +1063,12 @@ namespace snapshot_container {
             return *this;
         }
 
-        const iterator& _prefix_plusplus_impl(ssize_t incr=1) const
+        const _iterator& _prefix_plusplus_impl(ssize_t incr=1) const
         {
-            return const_cast<const iterator&>(const_cast<iterator*>(this)->_prefix_plusplus_impl(incr));
+            return const_cast<const _iterator&>(const_cast<_iterator*>(this)->_prefix_plusplus_impl(incr));
         }
         
-        iterator& _prefix_minusminus_impl(ssize_t decr=1) 
+        _iterator& _prefix_minusminus_impl(ssize_t decr=1) 
         {
             if (not m_kernel)
                 return *this;
@@ -1020,7 +1088,7 @@ namespace snapshot_container {
                     m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
                 } else 
                 {
-                    *this = iterator();
+                    *this = _iterator();
                 }
                 m_container_index -= 1;
                 return *this;
@@ -1046,9 +1114,9 @@ namespace snapshot_container {
             return *this;
         }
 
-        const iterator& _prefix_minusminus_impl(ssize_t decr=1) const
+        const _iterator& _prefix_minusminus_impl(ssize_t decr=1) const
         {
-            return const_cast<const iterator&>(const_cast<iterator*>(this)->_prefix_minusminus_impl(decr));
+            return const_cast<const _iterator&>(const_cast<_iterator*>(this)->_prefix_minusminus_impl(decr));
         }
         
         T& _dereference_impl()

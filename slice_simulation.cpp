@@ -34,7 +34,7 @@
 
 using snapshot_container::_iterator_kernel;
 using snapshot_container::deque_storage_creator;
-using snapshot_container::iterator;
+using snapshot_container::_iterator;
 typedef _iterator_kernel<int, deque_storage_creator<int>> ikernel;
 
 
@@ -111,13 +111,17 @@ struct IKSimRunner
                        std::uniform_int_distribution<size_t>& distrib)
     {
         auto ik_size = ik->size();
-        auto num_items_to_insert = ik_size > 1000 ? ik_size / 100 : 10;
-        std::vector<int> items_to_insert(num_items_to_insert, 0xdeadbeef);
+        auto num_items_to_insert = ik_size > 1000 ? ik_size / 100 : 10;        
+        if (m_items_to_insert.size() < num_items_to_insert)
+        {
+            m_items_to_insert.resize(num_items_to_insert, 0xdeadbeef);
+        }
+        
         auto impl = virtual_iter::vector_rand_iter_impl<int>();
-        virtual_iter::rand_iter<int, 48> itr (impl, items_to_insert.begin());
-        virtual_iter::rand_iter<int, 48> end_itr (impl, items_to_insert.end());
+        virtual_iter::rand_iter<int, 48> itr (impl, m_items_to_insert.begin());
+        virtual_iter::rand_iter<int, 48> end_itr (impl, m_items_to_insert.end());
         auto insert_index = distrib(generator) % ik_size;
-        if (std::distance(itr, end_itr) != items_to_insert.size())
+        if (std::distance(itr, end_itr) != m_items_to_insert.size())
         {
             std::cerr << "Detected problem w/ forward iterator: " << end_itr - itr << std::endl;
             std::terminate();
@@ -153,8 +157,8 @@ struct IKSimRunner
         auto iter_end = iter_start + max_iteration_length < ik_size ? iter_start + max_iteration_length : ik_size;        
         // std::cerr << "Iterating from " << iter_start << " to " << iter_end << " total size: " << ik_size << std::endl;
         
-        iterator<int, deque_storage_creator<int>> current_pos(ik, iter_start);
-        iterator<int, deque_storage_creator<int>> end_pos(ik, iter_end);
+        _iterator<int, deque_storage_creator<int>> current_pos(ik, iter_start);
+        _iterator<int, deque_storage_creator<int>> end_pos(ik, iter_end);
         for(; current_pos < end_pos; ++current_pos)
             *current_pos;        
     }
@@ -164,6 +168,8 @@ struct IKSimRunner
     
     // TODO: Add more plausible action types
     slice_stats run(size_t slice_size=2048, size_t num_slices=1, size_t num_iterations=1000000);
+
+    std::vector<int> m_items_to_insert;
 };
 
 
@@ -210,7 +216,7 @@ slice_stats IKSimRunner::run(size_t slice_size, size_t num_slices, size_t num_it
 int main()
 {
     IKSimRunner runner;
-    auto results = runner.run(2048, 2, 30000);    
+    auto results = runner.run(2048, 2, 50000);    
     results.display_stats();    
     return 0;
 }

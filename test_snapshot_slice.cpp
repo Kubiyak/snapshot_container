@@ -18,12 +18,12 @@
 
 using snapshot_container::_iterator_kernel;
 using snapshot_container::deque_storage_creator;
-using snapshot_container::iterator;
+using snapshot_container::_iterator;
 using config_traits = snapshot_container::_iterator_kernel_config_traits;
 
 template class deque_storage_creator<int>;
 template class _iterator_kernel<int, deque_storage_creator<int>>;
-template class iterator<int, deque_storage_creator<int>>;
+template class _iterator<int, deque_storage_creator<int>>;
 
 
 auto test_ik_creator(size_t num_slices, size_t num_values_per_slice)
