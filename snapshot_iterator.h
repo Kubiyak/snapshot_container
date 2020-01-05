@@ -105,6 +105,7 @@ namespace snapshot_container {
             _incr_update_count();
             m_slices = rhs.m_slices;
             m_cum_slice_lengths = rhs.m_cum_slice_lengths;
+            return *this;
         }
                 
         void deep_copy(const _iterator_kernel& rhs)

@@ -117,7 +117,7 @@ struct IKSimRunner
             m_items_to_insert.resize(num_items_to_insert, 0xdeadbeef);
         }
         
-        auto impl = virtual_iter::vector_rand_iter_impl<int>();
+        auto impl = virtual_iter::std_iter_impl_creator::create(m_items_to_insert);
         virtual_iter::rand_iter<int, 48> itr (impl, m_items_to_insert.begin());
         virtual_iter::rand_iter<int, 48> end_itr (impl, m_items_to_insert.end());
         auto insert_index = distrib(generator) % ik_size;
@@ -216,7 +216,7 @@ slice_stats IKSimRunner::run(size_t slice_size, size_t num_slices, size_t num_it
 int main()
 {
     IKSimRunner runner;
-    auto results = runner.run(2048, 2, 50000);    
+    auto results = runner.run(2048, 2, 20000);    
     results.display_stats();    
     return 0;
 }

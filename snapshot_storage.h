@@ -196,7 +196,7 @@ namespace snapshot_container
         template <typename InputIter>
         deque_storage(InputIter start_pos, InputIter end_pos);
         
-        static virtual_iter::std_rand_iter_impl<std::deque<value_type>, iter_mem_size> _iter_impl;        
+        static virtual_iter::std_rand_iter_impl<typename std::deque<value_type>::const_iterator, iter_mem_size> _iter_impl;        
         std::deque<T> m_data;
     };
 
@@ -231,7 +231,7 @@ namespace snapshot_container
     }
 
     template <typename T>
-    virtual_iter::std_rand_iter_impl<std::deque<T>, deque_storage<T>::iter_mem_size> deque_storage<T>::_iter_impl;
+    virtual_iter::std_rand_iter_impl<typename std::deque<T>::const_iterator, deque_storage<T>::iter_mem_size> deque_storage<T>::_iter_impl;
 
     
     // Storage creation may need to be stateful. To support this, the higher level abstraction takes a storage creator

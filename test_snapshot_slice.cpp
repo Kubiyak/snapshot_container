@@ -107,7 +107,7 @@ TEST_CASE("iterator_kernel insert tests", "[iterator_kernel]") {
     ik2 = _iterator_kernel<int, deque_storage_creator<int>>::create(ik); 
     std::vector<int> new_values{1001, 1002, 1003, 1004, 1005};
     
-    auto impl = virtual_iter::std_fwd_iter_impl<std::vector<int>, 48>();
+    auto impl = virtual_iter::std_fwd_iter_impl_creator::create(new_values);
     virtual_iter::fwd_iter<int, 48> itr (impl, new_values.begin());
     virtual_iter::fwd_iter<int, 48> end_itr (impl, new_values.end());
         
@@ -131,7 +131,7 @@ TEST_CASE("remove tests", "[iterator_kernel]") {
     REQUIRE(ik2->size() == 2048);
     
     std::vector<int> new_values {10000,10001,10002,10003};
-    auto impl = virtual_iter::std_rand_iter_impl<std::vector<int>, 48>();
+    auto impl = virtual_iter::std_iter_impl_creator::create(new_values);
     virtual_iter::rand_iter<int, 48> itr (impl, new_values.begin());
     virtual_iter::rand_iter<int, 48> end_itr (impl, new_values.end());
         
@@ -151,18 +151,18 @@ TEST_CASE("remove tests", "[iterator_kernel]") {
     ik4->remove(remove_begin_pos, remove_end_pos);
     REQUIRE(ik4->size() == 2048 - 128);
     test_values2.erase(test_values2.begin() + 128, test_values2.begin() + 256);
-    REQUIRE(std::equal(iterator(ik4, 0), iterator(ik4, ik4->size()), test_values2.begin()));
+    REQUIRE(std::equal(_iterator(ik4, 0), _iterator(ik4, ik4->size()), test_values2.begin()));
 }
 
 
 TEST_CASE("basic iterator tests", "[iterator_kernel]") {
  
     auto [ik, test_values] = test_ik_creator(1, 2048);   
-    auto end_itr = iterator<int, deque_storage_creator<int>>(ik, ik->end());
-    auto itr = iterator<int, deque_storage_creator<int>>(ik, ik->end());
+    auto end_itr = _iterator<int, deque_storage_creator<int>>(ik, ik->end());
+    auto itr = _iterator<int, deque_storage_creator<int>>(ik, ik->end());
     REQUIRE(std::equal(itr, end_itr, test_values.begin()));
 
-    itr = iterator<int, deque_storage_creator<int>>(ik, ik->begin());
+    itr = _iterator<int, deque_storage_creator<int>>(ik, ik->begin());
     auto itr2 = itr + 5;
     
     REQUIRE(*itr2 == test_values[5]);
@@ -202,7 +202,7 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
                 REQUIRE(ik->m_cum_slice_lengths[0] == node_size + 1);
             
             std::vector<int> new_values { 10001, 10002, 10003, 10004 };
-            auto impl = virtual_iter::std_fwd_iter_impl<std::vector<int>, 48>();
+            auto impl = virtual_iter::std_fwd_iter_impl_creator::create(new_values);
             auto vitr = virtual_iter::fwd_iter<int, 48>(impl, new_values.begin());
             auto vend_itr = virtual_iter::fwd_iter<int, 48>(impl, new_values.end());
 
@@ -226,7 +226,7 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
             ik->insert(insert_point, 0xdeadbeef);
 
             std::vector<int> new_values { 10001, 10002, 10003, 10004 };
-            auto impl = virtual_iter::std_fwd_iter_impl<std::vector<int>, 48>();
+            auto impl = virtual_iter::std_fwd_iter_impl_creator::create(new_values);
             auto vitr = virtual_iter::fwd_iter<int, 48>(impl, new_values.begin());
             auto vend_itr = virtual_iter::fwd_iter<int, 48>(impl, new_values.end());
 
@@ -248,7 +248,7 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
             auto insert_index = ik->container_index(insert_point);
             ik->insert(insert_point, 0xdeadbeef);
             REQUIRE(ik->m_cum_slice_lengths[0] == insert_pos);
-            auto itr = iterator<int, deque_storage_creator<int>>(ik, ik->slice_index(insert_index));            
+            auto itr = _iterator<int, deque_storage_creator<int>>(ik, ik->slice_index(insert_index));            
 
             // force non-const iterator access which will force a copy on write            
             *(itr - 1) += 1;
@@ -268,7 +268,7 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
         ik->insert(insert_point, 1024);
         
         auto iter_point = insert_index + 1;
-        auto itr = iterator<int, deque_storage_creator<int>>(ik, ik->slice_index(iter_point));
+        auto itr = _iterator<int, deque_storage_creator<int>>(ik, ik->slice_index(iter_point));
         auto value = *itr;
         REQUIRE(value == insert_index);        
         REQUIRE(*(itr - 1) == 1024);
@@ -282,7 +282,7 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
         auto insert_index = ik->container_index(insert_point);
         ik->insert(insert_point, 5019); // some value distinct from what is already there
         auto iter_point = insert_index + 1;
-        auto itr = iterator<int, deque_storage_creator<int>>(ik, ik->slice_index(iter_point));        
+        auto itr = _iterator<int, deque_storage_creator<int>>(ik, ik->slice_index(iter_point));        
         auto value = *itr;
         REQUIRE(value == insert_index);
         REQUIRE(*(itr - 1) == 5019);
@@ -301,8 +301,8 @@ TEST_CASE("multi slice tests", "[iterator kernel]") {
             auto remove_pos = ik->slice_index(slice_size);
             auto end_remove_pos = ik->slice_index(2*slice_size);
             auto itr = ik->remove(remove_pos, end_remove_pos);
-            auto ik2_iter = iterator(ik2, 0);
-            auto ik2_end = iterator(ik2, ik2->size());
+            auto ik2_iter = _iterator(ik2, 0);
+            auto ik2_end = _iterator(ik2, ik2->size());
             bool result = std::equal(ik2_iter, ik2_end, test_values2.begin());
             REQUIRE(result);
             REQUIRE(ik->m_slices.size() == 2);
@@ -321,17 +321,17 @@ TEST_CASE("multi slice tests", "[iterator kernel]") {
             auto itr = ik->remove(remove_pos, end_remove_pos);
             REQUIRE(ik->size() == 3*slice_size);
 
-            auto ik2_iter = iterator(ik2, 0);
-            auto ik2_end = iterator(ik2, ik2->size());
+            auto ik2_iter = _iterator(ik2, 0);
+            auto ik2_end = _iterator(ik2, ik2->size());
             bool result = std::equal(ik2_iter, ik2_end, test_values2.begin());
             
             test_values2.erase(test_values2.begin() + slice_size + slice_size/2, 
                                test_values2.begin() + 3*slice_size + slice_size/2);
             
             REQUIRE(test_values2.size() == 3*slice_size);
-            auto iter = iterator(ik, 0);
+            auto iter = _iterator(ik, 0);
             auto test_values2_iter = test_values2.begin();
-            auto end_iter = iterator(ik, ik->size());
+            auto end_iter = _iterator(ik, ik->size());
             while (iter < end_iter)
             {
                 if (*iter != *test_values2_iter)
@@ -342,7 +342,7 @@ TEST_CASE("multi slice tests", "[iterator kernel]") {
                 ++test_values2_iter;
             }
             
-            REQUIRE(std::equal(iterator(ik, 0), iterator(ik, ik->size()), test_values2.begin()));
+            REQUIRE(std::equal(_iterator(ik, 0), _iterator(ik, ik->size()), test_values2.begin()));
         }
     }
 }

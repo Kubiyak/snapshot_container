@@ -5,19 +5,26 @@
  * Released under the terms of the MIT license:
  * https://opensource.org/licenses/MIT
  **********************************************************************************************************************/
-
 #pragma once
 
 #include "virtual_iter.h"
+#include "type_traits"
 
 namespace virtual_iter
 {
-    // Implementation of fwd_iter around some c++ std container types.
-    template <typename Container, size_t IterMemSize, typename IterType=fwd_iter<typename Container::value_type, IterMemSize> >
-    class std_fwd_iter_impl_base: virtual public _fwd_iter_impl_base<typename Container::value_type, IterMemSize, IterType>
+    template <typename ConstIterType, size_t IterMemSize, typename IterType=fwd_iter<typename ConstIterType::value_type, IterMemSize> >
+    class std_fwd_iter_impl_base: virtual public _fwd_iter_impl_base<typename ConstIterType::value_type, IterMemSize, IterType>
     {
-    public:
-        typedef typename Container::value_type value_type;
+                
+    public:        
+
+        // It would be great if std::vector<T>::iterator could somehow be mapped to std::vector<T>::const_iterator
+        // but I don't know a convenient way to move between these types. The static assert is defensive but not very
+        // user friendly. There are some helper creators to work around this awkwardness as a partial solution.
+        static_assert(std::is_const<typename std::remove_pointer<typename ConstIterType::pointer>::type>::value,
+                      "virtual_iter::std_fwd_iter_impl must be constructed based on a const_iterator type");
+        
+        typedef typename ConstIterType::value_type value_type;
         typedef _fwd_iter_impl_base<value_type, IterMemSize, IterType> impl_base_t;
         typedef std::shared_ptr<impl_base_t> shared_base_t;
         typedef IterType iterator_type;
@@ -25,8 +32,8 @@ namespace virtual_iter
         
         struct _IterStore
         {
-            typename Container::const_iterator m_itr;
-
+            ConstIterType m_itr;
+            
             template <typename IteratorType>
             _IterStore(IteratorType& itr):
                     m_itr (itr)
@@ -37,33 +44,30 @@ namespace virtual_iter
         const iterator_type&
         plusplus(const iterator_type& obj) const override
         {
-            auto iterStore = reinterpret_cast<_IterStore*>(impl_base_t::mem (obj));
+            auto iter_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (obj));
 
-            ++iterStore->m_itr;
+            ++iter_store->m_itr;
             return obj;
         }
 
         iterator_type& plusplus(iterator_type& obj) const override
         {
-            auto iterStore = reinterpret_cast<_IterStore*>(impl_base_t::mem (obj));
-            ++iterStore->m_itr;
+            auto iter_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (obj));
+            ++iter_store->m_itr;
             return obj;
         }
 
         void destroy(iterator_type& obj) const override
         {
-            _IterStore* iterStore =
+            _IterStore* iter_store =
                     reinterpret_cast<_IterStore*>(impl_base_t::mem (obj));
-            iterStore->~_IterStore();
+            iter_store->~_IterStore();
         }
 
         bool equals(const iterator_type& lhs, const iterator_type& rhs) const override
         {
-            auto lhs_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (
-                    lhs));
-            auto rhs_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (
-                    rhs));
-
+            auto lhs_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (lhs));
+            auto rhs_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (rhs));
             return lhs_store->m_itr == rhs_store->m_itr;
         }
 
@@ -116,7 +120,7 @@ namespace virtual_iter
             auto lhs_iter = reinterpret_cast<_IterStore*>(iter);
             auto rhs_iter = reinterpret_cast<_IterStore*>(end_iter);
 
-            typename Container::difference_type diff = rhs_iter->m_itr - lhs_iter->m_itr;
+            typename iterator_type::difference_type diff = rhs_iter->m_itr - lhs_iter->m_itr;
 
             for (size_t i = 0; i < diff; ++i)
             {
@@ -129,30 +133,30 @@ namespace virtual_iter
     };
 
 
-   // Implementation of fwd_iter around some c++ std container types.
-    template <typename Container, size_t IterMemSize, typename IterType=fwd_iter<typename Container::value_type, IterMemSize> >
-    class std_fwd_iter_impl: public std_fwd_iter_impl_base<Container, IterMemSize, IterType>
+    // Implementation of fwd_iter around standard c++ iterator types.
+    template <typename ConstIterType, size_t IterMemSize, typename IterType=fwd_iter<typename ConstIterType::value_type, IterMemSize> >
+    class std_fwd_iter_impl: public std_fwd_iter_impl_base<ConstIterType, IterMemSize, IterType>
     {
-        public:
-                                 
-        typedef typename Container::value_type value_type;
+    public:
+        
+        typedef typename ConstIterType::value_type value_type;
         typedef _fwd_iter_impl_base<value_type, IterMemSize, IterType> impl_base_t;
         typedef std::shared_ptr<impl_base_t> shared_base_t;
         typedef IterType iterator_type;
         using difference_type = typename impl_base_t::difference_type;
-                           
-        using _IterStore = typename std_fwd_iter_impl_base<Container, IterMemSize, IterType>::_IterStore;
         
-        template <typename IteratorType>
-        shared_base_t create_fwd_iter_impl(IteratorType& iter)
-        {
-            return shared_base_t (new std_fwd_iter_impl<Container, IterMemSize>);
+        using _IterStore = typename std_fwd_iter_impl_base<ConstIterType, IterMemSize, IterType>::_IterStore;                 
+        
+        template <typename WrappedIter>
+        shared_base_t create_fwd_iter_impl(WrappedIter& iter)
+        {  
+            return shared_base_t (new std_fwd_iter_impl<ConstIterType, IterMemSize, IterType>);
         }          
         
-        template <typename IteratorType>
-        void instantiate(iterator_type& arg, IteratorType& itr)
+        template <typename WrappedIter>
+        void instantiate(iterator_type& arg, WrappedIter& itr)
         {
-            static_assert (sizeof (_IterStore) <= IterMemSize, "container_fwd_iter_impl: IterMemSize too small.");
+            static_assert (sizeof (_IterStore) <= sizeof(WrappedIter), "std_fwd_iter_impl: IterMemSize too small.");
             void* buffer = impl_base_t::mem (arg);
             _IterStore* store = new (buffer) _IterStore (itr);
         }
@@ -183,23 +187,23 @@ namespace virtual_iter
     };
     
     
-    template <typename Container, size_t IterMemSize, typename IterType=rand_iter<typename Container::value_type, IterMemSize>>
-    class std_rand_iter_impl : public std_fwd_iter_impl_base<Container, IterMemSize, IterType>,
-                               public _rand_iter_impl_base<typename Container::value_type, IterMemSize, IterType>
-                                                             
+    template <typename ConstIterType, size_t IterMemSize, typename IterType=rand_iter<typename ConstIterType::value_type, IterMemSize>>
+    class std_rand_iter_impl : public std_fwd_iter_impl_base<ConstIterType, IterMemSize, IterType>,
+                               public _rand_iter_impl_base<typename ConstIterType::value_type, IterMemSize, IterType>                                                             
     {
     public:
-        typedef std_fwd_iter_impl<Container, IterMemSize, IterType> fwd_impl_base_t;
-        typedef _rand_iter_impl_base<typename Container::value_type, IterMemSize, IterType> impl_base_t;
+        typedef typename ConstIterType::value_type value_type;
+        typedef std_fwd_iter_impl_base<ConstIterType, IterMemSize, IterType> fwd_impl_base_t;
+        typedef _rand_iter_impl_base<typename ConstIterType::value_type, IterMemSize, IterType> impl_base_t;
         typedef std::shared_ptr<impl_base_t> shared_base_t;
         typedef IterType iterator_type;
         using difference_type = typename fwd_impl_base_t::difference_type;
         using _IterStore = typename fwd_impl_base_t::_IterStore;
-
+        
         template <typename IteratorType>
         void instantiate(iterator_type& arg, IteratorType& itr)
         {
-            static_assert (sizeof (_IterStore) <= IterMemSize, "container_rand_iter_impl: IterMemSize too small.");
+            static_assert (sizeof (_IterStore) <= IterMemSize, "std_rand_iter_impl: IterMemSize too small.");
             void* buffer = impl_base_t::mem (arg);
             _IterStore* store = new (buffer) _IterStore (itr);
         }
@@ -207,16 +211,16 @@ namespace virtual_iter
         void instantiate(iterator_type& lhs,
                          const iterator_type& rhs) const override
         {
-            auto rhsStore = reinterpret_cast<_IterStore*>(impl_base_t::mem (rhs));
+            auto rhs_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (rhs));
 
             void* buffer = impl_base_t::mem (lhs);
-            _IterStore* lhsStore = new (buffer) _IterStore (rhsStore->m_itr);
+            _IterStore* lhs_store = new (buffer) _IterStore (rhs_store->m_itr);
         }            
 
         template <typename IteratorType>
         shared_base_t create_rand_iter_impl(IteratorType& iter)
-        {
-            return shared_base_t (new std_rand_iter_impl<Container, IterMemSize>());
+        {                       
+            return shared_base_t (new std_rand_iter_impl<ConstIterType, IterMemSize>());
         }            
 
         const iterator_type& minusminus(const iterator_type& obj) const override
@@ -274,24 +278,31 @@ namespace virtual_iter
             return iterator_type (std_rand_iter_impl(), iter_store->m_itr - offset);
         }
     };
-    
-    
-    // Some convenient using statements for common container types.  std::deque's iterator type requires
-    // the most storage on GCC.  Todo: Refactor this logic a bit to work correctly on more platforms.
-    // The goal is to successfully store all these iterator objects overlayed on a fixed size struct.
-    // The reason for that will be apparent in the snapshotvector implementation.
-    template <typename T>
-    using vector_fwd_iter_impl = std_fwd_iter_impl<std::vector<T>, 48>;
 
-    template <typename T>
-    using deque_fwd_iter_impl = std_fwd_iter_impl<std::deque<T>, 48>;
-
-    template <typename T>
-    using set_fwd_iter_impl = std_fwd_iter_impl<std::set<T>, 48>;
+        
+    struct std_iter_impl_creator
+    {
+        template<typename STDContainerType, size_t MemSize=48>
+        static auto create(const STDContainerType& prototype)
+        {
+            if constexpr (std::is_same<typename STDContainerType::iterator::iterator_category, std::random_access_iterator_tag>::value)
+            {
+                return std_rand_iter_impl<typename STDContainerType::const_iterator, MemSize>();
+            }
+            else
+            {
+                return std_fwd_iter_impl<typename STDContainerType::const_iterator, MemSize>();
+            }
+        }
+    };
     
-    template <typename T>
-    using deque_rand_iter_impl = std_rand_iter_impl<std::deque<T>, 48>;
-    
-    template <typename T>
-    using vector_rand_iter_impl = std_rand_iter_impl<std::vector<T>, 48>;
+        
+    struct std_fwd_iter_impl_creator
+    {
+        template <typename STDContainerType, size_t MemSize=48>
+        static auto create(const STDContainerType& prototype)
+        {
+            return std_fwd_iter_impl<typename STDContainerType::const_iterator, MemSize>();
+        }
+    };       
 }
