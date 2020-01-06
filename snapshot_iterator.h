@@ -45,7 +45,8 @@ namespace snapshot_container {
     
     
     template<typename T, typename StorageCreator,typename ConfigTraits=_iterator_kernel_config_traits>
-    class _iterator_kernel : public std::enable_shared_from_this<_iterator_kernel<T,StorageCreator>> {
+    class _iterator_kernel : public std::enable_shared_from_this<_iterator_kernel<T,StorageCreator>> 
+    {
     public:
         
         friend _iterator<T, StorageCreator>;
@@ -55,6 +56,9 @@ namespace snapshot_container {
         static constexpr size_t npos = 0xFFFFFFFFFFFFFFFF;
         typedef StorageCreator storage_creator_t;
         typedef _slice<T> slice_t;
+        typedef typename slice_t::storage_base_t storage_base_t;
+        typedef typename storage_base_t::fwd_iter_type fwd_iter_type;
+        typedef typename storage_base_t::rand_iter_type rand_iter_type;
         typedef ConfigTraits config_traits;
         
         struct slice_point

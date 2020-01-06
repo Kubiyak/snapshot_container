@@ -45,5 +45,7 @@ int main()
     auto end_pos2 = virtual_iter::rand_iter<int, 48>(impl2, data.end());
     container.insert(container.end(), begin_pos2, end_pos2);
     
+    container.insert(container.end(), data.begin(), data.end());
+    
     return 0;
 }
