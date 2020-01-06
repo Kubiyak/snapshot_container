@@ -8,7 +8,8 @@
 #pragma once
 
 #include "virtual_iter.h"
-#include "type_traits"
+#include "virtual_std_iter_detail.h"
+#include <type_traits>
 
 namespace virtual_iter
 {

@@ -1,6 +1,6 @@
 header_files = ['virtual_iter.h', 'virtual_std_iter.h',
                 'snapshot_iterator.h', 'snapshot_slice.h',
-                'snapshot_storage.h']
+                'snapshot_storage.h', 'virtual_std_iter_detail.h']
 
 
 slice_test_env = Environment(CXX="g++-8", CXXFLAGS="--std=c++17 -g --coverage -fprofile-arcs -ftest-coverage -D_SNAPSHOTCONTAINER_TEST=1")
