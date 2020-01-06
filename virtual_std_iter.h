@@ -280,30 +280,61 @@ namespace virtual_iter
         }
     };
 
-        
+
     struct std_iter_impl_creator
     {
-        template<typename STDContainerType, size_t MemSize=48>
-        static auto create(const STDContainerType& prototype)
+        template <typename ContainerType, 
+                 size_t MemSize=48, 
+                 std::enable_if_t< std::is_same<typename ContainerType::iterator, typename ContainerType::iterator>::value, int > = 0>
+        static auto create(const ContainerType& prototype)
         {
-            if constexpr (std::is_same<typename STDContainerType::iterator::iterator_category, std::random_access_iterator_tag>::value)
+            if constexpr (std::is_same<typename ContainerType::iterator::iterator_category, std::random_access_iterator_tag>::value)
             {
-                return std_rand_iter_impl<typename STDContainerType::const_iterator, MemSize>();
+                return std_rand_iter_impl<typename ContainerType::const_iterator, MemSize>();
             }
             else
             {
-                return std_fwd_iter_impl<typename STDContainerType::const_iterator, MemSize>();
-            }
+                return std_fwd_iter_impl<typename ContainerType::const_iterator, MemSize>();
+            }            
         }
-    };
-    
         
+        
+        template <typename IteratorType, size_t MemSize=48,
+                  std::enable_if_t<
+                  std::is_same<typename IteratorType::iterator_category, typename IteratorType::iterator_category>::value, int > = 0>
+        static auto create(const IteratorType& prototype)
+        {
+            if constexpr (std::is_same<typename IteratorType::iterator_category, std::random_access_iterator_tag>::value)
+            {
+                return std_rand_iter_impl<typename decltype(
+                                          virtual_iter_detail::make_const_iterator::create(std::declval<IteratorType>()))::type,
+                                          MemSize>();
+            }
+            else
+            {
+                return std_fwd_iter_impl<typename decltype(
+                                         virtual_iter_detail::make_const_iterator::create(std::declval<IteratorType>()))::type, 
+                                        MemSize>();
+            }
+        } 
+    };
+   
+    
     struct std_fwd_iter_impl_creator
     {
-        template <typename STDContainerType, size_t MemSize=48>
-        static auto create(const STDContainerType& prototype)
+        template <typename ContainerType, size_t MemSize=48,
+                  std::enable_if_t< std::is_same<typename ContainerType::iterator, typename ContainerType::iterator>::value, int> = 0>
+        static auto create(const ContainerType& prototype)
         {
-            return std_fwd_iter_impl<typename STDContainerType::const_iterator, MemSize>();
+            return std_fwd_iter_impl<typename ContainerType::const_iterator, MemSize>();
         }
-    };       
+
+        template <typename IteratorType, size_t MemSize=48, 
+                  std::enable_if_t<std::is_same<typename IteratorType::iterator_category, typename IteratorType::iterator_category>::value> = 0>
+        static auto create(const IteratorType& prototype)
+        {
+            return std_fwd_iter_impl<typename decltype(
+                                     virtual_iter_detail::make_const_iterator::create(std::declval<IteratorType>()))::type, MemSize>();
+        }                        
+    };             
 }
