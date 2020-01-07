@@ -42,7 +42,8 @@ namespace snapshot_container
         typedef _iterator_kernel<T, StorageCreator, ConfigTraits> kernel_t;
         typedef typename kernel_t::fwd_iter_type fwd_iter_type;
         typedef typename kernel_t::rand_iter_type rand_iter_type;
-        typedef _iterator<T, StorageCreator> iterator_type;
+        typedef typename kernel_t::iterator iterator;
+        typedef typename kernel_t::const_iterator const_iterator;
         typedef std::shared_ptr<kernel_t> shared_kernel_t;
         typedef size_t size_type;
         typedef ssize_t difference_type;
@@ -89,13 +90,11 @@ namespace snapshot_container
         container_t& operator=(container_t && rhs) = default;     
         ~container() {}
                 
-        iterator_type begin() {return iterator_type(m_kernel, 0);}
-        iterator_type end() {return iterator_type(m_kernel, size());}
-        const iterator_type begin() const {return iterator_type(m_kernel, 0);}
-        const iterator_type end() const {return iterator_type(m_kernel, size());}
-        iterator_type iterator(size_t index) {return iterator_type(m_kernel, index);}
-        const iterator_type iterator(size_t index) const {return iterator_type(m_kernel, index);}
-        
+        iterator begin() {return iterator(m_kernel, 0);}
+        iterator end() {return iterator(m_kernel, size());}
+        const_iterator begin() const {return const_iterator(m_kernel, 0);}
+        const_iterator end() const {return const_iterator(m_kernel, size());}
+                
         // It is unsafe to keep pointers or references to elements in container beyond
         // immediate ops. Non-updating actions can invalidate direct references and pointers to elements.
         // These are provided for convenience only. Use the iterator interface instead in order to refer back to a
@@ -109,32 +108,33 @@ namespace snapshot_container
             m_kernel->clear();
         }
         
-        iterator_type insert(const iterator_type& insert_pos, const T& value)
+        
+        iterator insert(const_iterator insert_pos, const T& value)
         {
             m_kernel->insert(insert_pos.pos(), value);
             return insert_pos;
         }
         
-        iterator_type insert(const iterator_type& insert_pos, 
-                             const fwd_iter_type& begin_pos,
-                             const fwd_iter_type& end_pos)
+        iterator insert(const_iterator insert_pos, 
+                        const fwd_iter_type& begin_pos,
+                        const fwd_iter_type& end_pos)
         {
             auto insert_point = m_kernel->insert(insert_pos.pos(), begin_pos, end_pos);
-            return iterator_type(m_kernel, insert_point);
+            return iterator(m_kernel, insert_point);
         }
         
-        iterator_type insert(const iterator_type& insert_pos,
+        iterator insert(const_iterator insert_pos,
                              const rand_iter_type& begin_pos,
                              const rand_iter_type& end_pos)
         {
             auto insert_point = m_kernel->insert(insert_pos.pos(), begin_pos, end_pos);
-            return iterator_type(m_kernel, insert_point);
+            return iterator(m_kernel, insert_point);
         }
                 
         template <typename IterType,
                   std::enable_if_t<std::is_same<typename std::iterator_traits<IterType>::iterator_category,
                   std::random_access_iterator_tag>::value, int> = 0>
-        iterator_type insert(const iterator_type& insert_pos, IterType start_pos, IterType end_pos)
+        iterator insert(const_iterator insert_pos, IterType start_pos, IterType end_pos)
         {
             auto impl = virtual_iter::std_iter_impl_creator::create(start_pos);
             auto iter1 = rand_iter_type(impl, start_pos);
@@ -145,7 +145,7 @@ namespace snapshot_container
         template <typename IterType,
             std::enable_if_t<!std::is_same<typename std::iterator_traits<IterType>::iterator_category,
                               std::random_access_iterator_tag>::value, int> = 0>
-        iterator_type insert(const iterator_type& insert_pos, IterType start_pos, IterType end_pos)
+        iterator insert(const_iterator insert_pos, IterType start_pos, IterType end_pos)
         {
             auto impl = virtual_iter::std_fwd_iter_impl_creator::create(start_pos);
             auto iter1 = fwd_iter_type(impl, start_pos);
@@ -153,23 +153,23 @@ namespace snapshot_container
             return insert(insert_pos, iter1, iter2);
         }
                 
-        iterator_type erase(const iterator_type& remove_pos)
+        iterator erase(const_iterator remove_pos)
         {
             auto result = m_kernel->remove(remove_pos.pos());
-            return iterator_type(m_kernel, result);
+            return iterator(m_kernel, result);
         }
         
-        iterator_type erase(const iterator_type& start_pos, const iterator_type& end_pos)
+        iterator erase(const_iterator start_pos, const_iterator end_pos)
         {
             auto result = m_kernel->remove(start_pos.pos(), end_pos.pos());
-            return iterator_type(m_kernel, result);
+            return iterator(m_kernel, result);
         }
                 
         template<typename IterType>
-        iterator_type append(const iterator_type& start_pos, const iterator_type& end_pos)
+        iterator append(const_iterator start_pos, const_iterator end_pos)
         {
             auto result = m_kernel->append(start_pos, end_pos);
-            return iterator_type(m_kernel, result);
+            return iterator(m_kernel, result);
         }
         
         void push_back(const T& value)

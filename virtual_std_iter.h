@@ -42,16 +42,7 @@ namespace virtual_iter
             }
         };
         
-        const iterator_type&
-        plusplus(const iterator_type& obj) const override
-        {
-            auto iter_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (obj));
-
-            ++iter_store->m_itr;
-            return obj;
-        }
-
-        iterator_type& plusplus(iterator_type& obj) const override
+        iterator_type& plusplus(iterator_type& obj) override
         {
             auto iter_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (obj));
             ++iter_store->m_itr;
@@ -116,7 +107,7 @@ namespace virtual_iter
             return copy_count;
         }
 
-        void visit(void* iter, void* end_iter, std::function<bool(const value_type&)>& f) const override
+        void visit(void* iter, void* end_iter, std::function<bool(const value_type&)>& f) override
         {
             auto lhs_iter = reinterpret_cast<_IterStore*>(iter);
             auto rhs_iter = reinterpret_cast<_IterStore*>(end_iter);
@@ -224,13 +215,6 @@ namespace virtual_iter
             return shared_base_t (new std_rand_iter_impl<ConstIterType, IterMemSize>());
         }            
 
-        const iterator_type& minusminus(const iterator_type& obj) const override
-        {
-            auto iter_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (obj));
-            --iter_store->m_itr;
-            return obj;                
-        }
-
         iterator_type& minusminus(iterator_type& obj) override
         {
             auto iter_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (obj));
@@ -245,27 +229,13 @@ namespace virtual_iter
             return obj;
         }
 
-        const iterator_type& pluseq(const iterator_type& obj, difference_type incr) const override
-        {
-            auto iter_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (obj));
-            iter_store->m_itr += incr;
-            return obj;
-        }
-
         iterator_type& minuseq(iterator_type& obj, difference_type decr) override
         {
             auto iter_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (obj));
             iter_store->m_itr -= decr;
             return obj;
         }
-
-        const iterator_type& minuseq(const iterator_type& obj, difference_type decr) const override
-        {
-            auto iter_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (obj));
-            iter_store->m_itr -= decr;
-            return obj;
-        }             
-
+           
         iterator_type plus(const iterator_type& lhs, difference_type offset) const override
         {
             auto iter_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (lhs));
@@ -297,8 +267,7 @@ namespace virtual_iter
                 return std_fwd_iter_impl<typename ContainerType::const_iterator, MemSize>();
             }            
         }
-        
-        
+                
         template <typename IteratorType, size_t MemSize=48,
                   std::enable_if_t<
                   std::is_same<typename IteratorType::iterator_category, typename IteratorType::iterator_category>::value, int > = 0>

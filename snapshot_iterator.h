@@ -3,12 +3,14 @@
 #include <tuple>
 #include <algorithm>
 #include <iostream>
+#include <type_traits>
 
 
 namespace snapshot_container {
 
-    template<typename T, typename C>
+    template<typename T, typename Ref, typename Ptr, typename C>
     class _iterator;
+    
     
     struct _iterator_kernel_config_traits
     {        
@@ -49,7 +51,11 @@ namespace snapshot_container {
     {
     public:
         
-        friend _iterator<T, StorageCreator>;
+        friend _iterator<T, T&, T*, StorageCreator>;
+        friend _iterator<T, T const&, T const *, StorageCreator>;
+        
+        typedef _iterator<T, T&, T*, StorageCreator> iterator;
+        typedef _iterator<T, T const&, T const *, StorageCreator> const_iterator;
         
         // Implementation details for the iterator type for snapshot_container. Must be created via 
         // shared ptr. Both the container type and iterators for the container will keep a shared ptr to iterator_kernel.
@@ -788,8 +794,20 @@ namespace snapshot_container {
         size_t m_update_count = 0; // indicator to iterators that state changed
     };
     
-    template<typename T, typename StorageCreator>
-    class _iterator {
+    
+    template <typename T, typename Ref, typename Ptr, typename StorageCreator>
+    class _iterator;
+    
+    // Implementation detail. Do not use directly.
+    // TODO: Find a way to move this out of namespace scope.
+    template <typename T, typename Ref, typename Ptr, typename StorageCreator>
+    std::shared_ptr<_iterator_kernel<T, StorageCreator>> _extract_kernel(const _iterator<T, Ref, Ptr, StorageCreator>&);
+    
+    
+    // Implementation detail. Do not construct directly.        
+    template<typename T, typename Ref, typename Ptr, typename StorageCreator>
+    class _iterator 
+    {        
     public:
         static constexpr size_t npos = 0xFFFFFFFFFFFFFFFF;
         using iterator_kernel_t = _iterator_kernel<T, StorageCreator>;
@@ -798,9 +816,12 @@ namespace snapshot_container {
         typedef std::random_access_iterator_tag iterator_category;
         typedef T value_type;
         typedef ssize_t difference_type;
-        typedef T* pointer;
-        typedef T& reference;
-
+        typedef Ptr pointer;
+        typedef Ref reference;
+            
+        
+        friend std::shared_ptr<iterator_kernel_t> _extract_kernel<>(const _iterator&);
+        
         _iterator() = default;
 
         // TODO: Only the higher container type should be able to use this constructor directly.
@@ -824,7 +845,20 @@ namespace snapshot_container {
             if (m_container_index != npos)
                 m_iter_pos = m_kernel->slice_index(container_index);
         }
-                
+                                
+        // iterators are type convertible to const_iterators
+        template <typename Ref2, typename Ptr2,
+        std::enable_if_t<std::is_same<std::remove_const_t<std::remove_reference_t<Ref>>, std::remove_reference_t<Ref2>>::value && 
+        !std::is_same<Ref, Ref2>::value, int> = 0>
+        _iterator(const _iterator<T, Ref2, Ptr2, StorageCreator>& rhs):
+            m_kernel(_extract_kernel(rhs)),
+            m_iter_pos(),
+            m_current_slice(nullptr),
+            m_update_count(npos),
+            m_container_index(rhs.container_index())
+        {            
+        }
+                                
         // Used by higher level container type
         slice_point pos() const
         {
@@ -834,45 +868,41 @@ namespace snapshot_container {
             _prefix_plusplus_impl(0);
             return m_iter_pos;
         }
+    
+        size_t container_index() const
+        {
+            return m_container_index;
+        }
         
         _iterator(const _iterator& rhs) = default;
         _iterator& operator=(const _iterator& rhs) = default;
         
+        
+        // iterators are type convertible to const iterators
+        template <typename Ref2, typename Ptr2,
+        std::enable_if_t<std::is_same<std::remove_const_t<Ref>, Ref2>::value && !std::is_same<Ref, Ref2>::value, int> = 0>
+        _iterator& operator=(const _iterator<T, Ref2, Ptr2, StorageCreator>& rhs)
+        {
+            m_kernel = rhs.m_kernel;
+            m_container_index = rhs.m_container_index;
+            m_update_count = npos;
+            m_current_slice = nullptr;
+            return *this;
+        }
+                
         _iterator& operator+=(ssize_t incr)
         {
             return _prefix_plusplus_impl(incr);
         }
-        
-        const _iterator& operator+=(ssize_t incr) const
-        {
-            return _prefix_plusplus_impl(incr);
-        }
-        
+                
         _iterator& operator -=(ssize_t decr)
         {
             return _prefix_minusminus_impl(decr);
         }
-        
-        const _iterator& operator-=(ssize_t decr) const
-        {
-            return _prefix_minusminus_impl(decr);
-        }
-                
-        const _iterator& operator++() const 
-        {
-            return _prefix_plusplus_impl();
-        }
-
+               
         _iterator& operator++() 
         {
             return _prefix_plusplus_impl();
-        }
-
-        const _iterator operator++(int) const
-        {
-            _iterator pos(*this);
-            _prefix_plusplus_impl();
-            return pos;
         }
         
         _iterator operator++(int)
@@ -886,42 +916,30 @@ namespace snapshot_container {
         {
             return _prefix_minusminus_impl();
         }
-        
-        const _iterator& operator--() const
-        {
-            return _prefix_minusminus_impl();
-        }
-        
+
         _iterator operator--(int)
         {
             _iterator pos(*this);
             _prefix_minusminus_impl();
             return pos;
         }        
-        
-        const _iterator operator--(int) const
-        {
-            _iterator pos(*this);
-            _prefix_minusminus_impl();
-            return pos;
-        }          
-        
-        T& operator * ()
+                        
+        reference operator * ()
         {
             return _dereference_impl();
         }
         
-        const T& operator * () const
+        reference operator * () const
         {
             return _dereference_impl();
         }
         
-        T* operator->()
+        pointer operator->()
         {
             return &(_dereference_impl());
         }
         
-        const T* operator->() const
+        pointer operator->() const
         {
             return &(_dereference_impl());
         }
@@ -992,7 +1010,7 @@ namespace snapshot_container {
                 throw std::logic_error("Invalid iterator subtraction");
         }
 
-        _iterator operator-(difference_type offset)
+        _iterator operator-(difference_type offset) const
         {
             if (not m_kernel)
                 return _iterator();
@@ -1003,12 +1021,7 @@ namespace snapshot_container {
             return _iterator(m_kernel, m_container_index - offset);
         }        
         
-        const _iterator operator-(difference_type offset) const 
-        {
-            return const_cast<_iterator*>(this)->operator-(offset);
-        }
-
-        _iterator operator+(difference_type offset)
+        _iterator operator+(difference_type offset) const
         {        
             if (not m_kernel)
                 return _iterator();
@@ -1018,10 +1031,6 @@ namespace snapshot_container {
             return _iterator(m_kernel, m_container_index + offset);
         }
 
-        const _iterator operator+(difference_type offset) const
-        {        
-            return const_cast<_iterator*>(this)->operator+(offset);
-        }
                 
     protected:
                        
@@ -1068,12 +1077,14 @@ namespace snapshot_container {
             return *this;
         }
 
-        const _iterator& _prefix_plusplus_impl(ssize_t incr=1) const
+        // This is really a hack. It is called mostly w/ incr = 0.
+        // TODO: Refactor uses of this into a separate function
+        const _iterator& _prefix_plusplus_impl(difference_type incr=1) const
         {
             return const_cast<const _iterator&>(const_cast<_iterator*>(this)->_prefix_plusplus_impl(incr));
         }
         
-        _iterator& _prefix_minusminus_impl(ssize_t decr=1) 
+        _iterator& _prefix_minusminus_impl(ssize_t decr=1) const
         {
             if (not m_kernel)
                 return *this;
@@ -1118,13 +1129,8 @@ namespace snapshot_container {
             m_container_index -= decr;
             return *this;
         }
-
-        const _iterator& _prefix_minusminus_impl(ssize_t decr=1) const
-        {
-            return const_cast<const _iterator&>(const_cast<_iterator*>(this)->_prefix_minusminus_impl(decr));
-        }
         
-        T& _dereference_impl()
+        reference _dereference_impl() const
         {
             if (not m_kernel)
                 throw std::logic_error("Invalid iterator dereference (no kernel)");
@@ -1137,43 +1143,34 @@ namespace snapshot_container {
                 throw std::logic_error("Invalid iterator dereference (npos)");
             
             m_iter_pos = m_kernel->slice_index(m_container_index);
-            auto new_iter_pos = m_kernel->_iteration_cow_ops(m_iter_pos);
             
-            if (new_iter_pos == m_kernel->end())
-                throw std::logic_error("Invalid iterator dereference (end)");
+            // If reference is modifiable then need to do cow ops
+            if constexpr(std::is_same<std::add_pointer_t<T>, pointer>::value)
+            {
+                auto new_iter_pos = m_kernel->_iteration_cow_ops(m_iter_pos);
+                        
+                m_update_count = m_kernel->get_update_count();            
+                m_iter_pos = new_iter_pos;
+            }
             
-            m_update_count = m_kernel->get_update_count();
-            
-            m_iter_pos = new_iter_pos;
-            m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
-            return (*m_current_slice)[m_iter_pos.index()];
-        }
-                
-        const T& _dereference_impl() const
-        {
-            if (!m_kernel)
-                throw std::logic_error("Invalid iterator dereference (no kernel)");
-            
-            // This version doesn't need to call cow_ops
-            if (m_update_count == m_kernel->get_update_count() && m_current_slice)
-               return (*m_current_slice)[m_iter_pos.index()]; 
-         
-            m_current_slice = nullptr; 
-            if (m_container_index == npos)
-                throw std::logic_error("Invalid iterator dereference (npos)");
-            m_iter_pos = m_kernel->slice_index(m_container_index);
-             
             if (m_iter_pos == m_kernel->end())
                 throw std::logic_error("Invalid iterator dereference (end)");
             
             m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
-            return (*m_current_slice)[m_iter_pos.index()];            
+            return (*m_current_slice)[m_iter_pos.index()];
         }
-                
+                    
         mutable slice_t* m_current_slice;
         mutable size_t m_update_count;
         mutable size_t m_container_index;
         mutable slice_point m_iter_pos;        
-        std::shared_ptr<iterator_kernel_t> m_kernel;        
+        std::shared_ptr<iterator_kernel_t> m_kernel;
     };
+
+    
+    template <typename T, typename Ref, typename Ptr, typename StorageCreator>
+    std::shared_ptr<_iterator_kernel<T, StorageCreator>> _extract_kernel(const _iterator<T, Ref, Ptr, StorageCreator>& rhs)
+    {
+        return rhs.m_kernel;
+    }
 }

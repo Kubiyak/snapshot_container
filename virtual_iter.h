@@ -30,9 +30,7 @@ namespace virtual_iter
         
         virtual void instantiate(iterator_type& lhs, const iterator_type& rhs) const = 0;
 
-        virtual iterator_type& plusplus(iterator_type& obj) const = 0;
-
-        virtual const iterator_type& plusplus(const iterator_type& obj) const = 0;
+        virtual iterator_type& plusplus(iterator_type& obj) = 0;
 
         virtual void destroy(iterator_type& obj) const = 0;
 
@@ -50,7 +48,7 @@ namespace virtual_iter
 
         virtual size_t copy(T* resultPtr, size_t maxItems, void* iter, void* endItr) const = 0;
 
-        virtual void visit(void* iter, void* endItr, std::function<bool(const T&)>&) const = 0;
+        virtual void visit(void* iter, void* end_iter, std::function<bool(const T&)>&) = 0;
 
         void* mem(const iterator_type& arg) const
         {
@@ -70,15 +68,9 @@ namespace virtual_iter
         
         // In addition to the features provided by forward iterators,
         // random access iterators need operator -- , +=, -=
-        virtual iterator_type& minusminus(iterator_type& obj) = 0;
-        virtual const iterator_type& minusminus(const iterator_type& obj) const = 0;
-        
-        virtual iterator_type& pluseq(iterator_type& obj, difference_type incr) = 0;
-        virtual const iterator_type& pluseq(const iterator_type& obj, difference_type incr) const = 0;
-        
-        virtual iterator_type& minuseq(iterator_type& obj, difference_type decr) = 0;
-        virtual const iterator_type& minuseq(const iterator_type& obj, difference_type decr) const = 0;
-                
+        virtual iterator_type& minusminus(iterator_type& obj) = 0;        
+        virtual iterator_type& pluseq(iterator_type& obj, difference_type incr) = 0;        
+        virtual iterator_type& minuseq(iterator_type& obj, difference_type decr) = 0;                       
         using base_t::mem;        
     };
     
@@ -120,9 +112,6 @@ namespace virtual_iter
         iterator_type operator+(difference_type offset) const
         {return m_impl->plus (static_cast<const iterator_type&>(*this), offset);}
         
-        const iterator_type& operator++() const
-        {return m_impl->plusplus (static_cast<const iterator_type&>(*this));}
-
         iterator_type& operator++()
         {return m_impl->plusplus (static_cast<iterator_type&>(*this));}
 
@@ -156,7 +145,7 @@ namespace virtual_iter
         // This function exists as a workaround for situations where copying an object is too expensive.
         // copy works better for simple native types such as int.  A compound type such as std::string may
         // be better to visit than to copy.
-        void visit(const iterator_type& endItr, std::function<bool(const value_type&)>& f) const
+        void visit(const iterator_type& endItr, std::function<bool(const value_type&)>& f)
         {
             m_impl->visit (m_iter_mem, endItr.m_iter_mem, f);
         }        
@@ -238,20 +227,11 @@ namespace virtual_iter
                 
         rand_iter& operator--()
         {return base_t::m_impl->minusminus(*this);}
-        
-        const rand_iter& operator--() const
-        {return base_t::m_impl->minusminus(*this);}
-        
+                
         rand_iter& operator+=(difference_type incr)
         {return base_t::m_impl->pluseq(*this, incr);}
     
-        const rand_iter& operator+=(difference_type incr) const
-        {return base_t::m_impl->pluseq(*this, incr);}
-        
         rand_iter& operator-=(difference_type decr)
-        {return base_t::m_impl->minuseq(*this, decr);}
-        
-        const rand_iter& operator-=(difference_type decr) const
-        {return base_t::m_impl->minuseq(*this, decr);}        
+        {return base_t::m_impl->minuseq(*this, decr);}              
     };    
 }
