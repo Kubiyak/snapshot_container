@@ -16,7 +16,6 @@ namespace virtual_iter
     template <typename ConstIterType, size_t IterMemSize, typename IterType=fwd_iter<typename ConstIterType::value_type, IterMemSize> >
     class std_fwd_iter_impl_base: virtual public _fwd_iter_impl_base<typename ConstIterType::value_type, IterMemSize, IterType>
     {
-                
     public:        
 
         // It would be great if std::vector<T>::iterator could somehow be mapped to std::vector<T>::const_iterator
@@ -24,24 +23,24 @@ namespace virtual_iter
         // user friendly. There are some helper creators to work around this awkwardness as a partial solution.
         static_assert(std::is_const<typename std::remove_pointer<typename ConstIterType::pointer>::type>::value,
                       "virtual_iter::std_fwd_iter_impl must be constructed based on a const_iterator type");
-        
+
         typedef typename ConstIterType::value_type value_type;
         typedef _fwd_iter_impl_base<value_type, IterMemSize, IterType> impl_base_t;
         typedef std::shared_ptr<impl_base_t> shared_base_t;
         typedef IterType iterator_type;
         using difference_type = typename impl_base_t::difference_type;
-        
+
         struct _IterStore
         {
             ConstIterType m_itr;
-            
+
             template <typename IteratorType>
             _IterStore(IteratorType& itr):
                     m_itr (itr)
             {
             }
         };
-        
+
         iterator_type& plusplus(iterator_type& obj) override
         {
             auto iter_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (obj));
@@ -70,7 +69,7 @@ namespace virtual_iter
 
             return lhs_store->m_itr - rhs_store->m_itr;
         }
-     
+
         const value_type* pointer(const iterator_type& arg) const override
         {
             auto iter_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (arg));
@@ -130,21 +129,20 @@ namespace virtual_iter
     class std_fwd_iter_impl: public std_fwd_iter_impl_base<ConstIterType, IterMemSize, IterType>
     {
     public:
-        
+
         typedef typename ConstIterType::value_type value_type;
         typedef _fwd_iter_impl_base<value_type, IterMemSize, IterType> impl_base_t;
         typedef std::shared_ptr<impl_base_t> shared_base_t;
         typedef IterType iterator_type;
         using difference_type = typename impl_base_t::difference_type;
-        
-        using _IterStore = typename std_fwd_iter_impl_base<ConstIterType, IterMemSize, IterType>::_IterStore;                 
-        
+
+        using _IterStore = typename std_fwd_iter_impl_base<ConstIterType, IterMemSize, IterType>::_IterStore;
         template <typename WrappedIter>
         shared_base_t create_fwd_iter_impl(WrappedIter& iter)
-        {  
-            return shared_base_t (new std_fwd_iter_impl<ConstIterType, IterMemSize, IterType>);
-        }          
-        
+        {
+            return std::make_shared<std_fwd_iter_impl<ConstIterType, IterMemSize, IterType>>();
+        }
+
         template <typename WrappedIter>
         void instantiate(iterator_type& arg, WrappedIter& itr)
         {
@@ -160,8 +158,8 @@ namespace virtual_iter
 
             void* buffer = impl_base_t::mem (lhs);
             _IterStore* lhsStore = new (buffer) _IterStore (rhsStore->m_itr);
-        }        
-        
+        }
+
         iterator_type plus(const iterator_type& lhs, ssize_t offset) const override
         {
             auto iter_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (lhs));
@@ -171,17 +169,17 @@ namespace virtual_iter
 
         iterator_type minus(const iterator_type& lhs, ssize_t offset) const override
         {
-            auto iter_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (lhs));            
+            auto iter_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (lhs));
             return iterator_type (std_fwd_iter_impl(),
                                   iter_store->m_itr - offset);
-        }            
+        }
 
     };
-    
-    
+
+
     template <typename ConstIterType, size_t IterMemSize, typename IterType=rand_iter<typename ConstIterType::value_type, IterMemSize>>
     class std_rand_iter_impl : public std_fwd_iter_impl_base<ConstIterType, IterMemSize, IterType>,
-                               public _rand_iter_impl_base<typename ConstIterType::value_type, IterMemSize, IterType>                                                             
+                               public _rand_iter_impl_base<typename ConstIterType::value_type, IterMemSize, IterType>
     {
     public:
         typedef typename ConstIterType::value_type value_type;
@@ -191,7 +189,7 @@ namespace virtual_iter
         typedef IterType iterator_type;
         using difference_type = typename fwd_impl_base_t::difference_type;
         using _IterStore = typename fwd_impl_base_t::_IterStore;
-        
+
         template <typename IteratorType>
         void instantiate(iterator_type& arg, IteratorType& itr)
         {
@@ -212,14 +210,14 @@ namespace virtual_iter
         template <typename IteratorType>
         shared_base_t create_rand_iter_impl(IteratorType& iter)
         {                       
-            return shared_base_t (new std_rand_iter_impl<ConstIterType, IterMemSize>());
-        }            
+            return std::make_shared<std_rand_iter_impl<ConstIterType, IterMemSize>>();
+        }
 
         iterator_type& minusminus(iterator_type& obj) override
         {
             auto iter_store = reinterpret_cast<_IterStore*>(impl_base_t::mem (obj));
             --iter_store->m_itr;
-            return obj;                
+            return obj;
         }            
 
         iterator_type& pluseq(iterator_type& obj, difference_type incr) override
