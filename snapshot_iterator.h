@@ -1159,7 +1159,10 @@ namespace snapshot_container {
             m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
             return (*m_current_slice)[m_iter_pos.index()];
         }
-                    
+         
+        
+        // This is too big to fit into a virtual_iter<T,48> type which presents problems from
+        // wrapping this into a cache line efficient type erased iterator type. 
         mutable slice_t* m_current_slice;
         mutable size_t m_update_count;
         mutable size_t m_container_index;
