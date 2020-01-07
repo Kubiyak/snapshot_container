@@ -827,8 +827,7 @@ namespace snapshot_container {
         // TODO: Only the higher container type should be able to use this constructor directly.
         _iterator(const std::shared_ptr<iterator_kernel_t>& kernel, const slice_point& iter_pos) :
         m_kernel(kernel),
-        m_iter_pos(iter_pos),
-        m_current_slice(nullptr),
+        m_iter_pos(iter_pos),        
         m_update_count(npos),
         m_container_index(0)
         {
@@ -837,8 +836,7 @@ namespace snapshot_container {
 
         _iterator(const std::shared_ptr<iterator_kernel_t>& kernel, size_t container_index):
             m_kernel(kernel),
-            m_iter_pos(),
-            m_current_slice(nullptr),
+            m_iter_pos(),            
             m_update_count(npos),
             m_container_index(container_index)
         {
@@ -852,8 +850,7 @@ namespace snapshot_container {
         !std::is_same<Ref, Ref2>::value, int> = 0>
         _iterator(const _iterator<T, Ref2, Ptr2, StorageCreator>& rhs):
             m_kernel(_extract_kernel(rhs)),
-            m_iter_pos(),
-            m_current_slice(nullptr),
+            m_iter_pos(),            
             m_update_count(npos),
             m_container_index(rhs.container_index())
         {            
@@ -885,8 +882,7 @@ namespace snapshot_container {
         {
             m_kernel = rhs.m_kernel;
             m_container_index = rhs.m_container_index;
-            m_update_count = npos;
-            m_current_slice = nullptr;
+            m_update_count = npos;            
             return *this;
         }
                 
@@ -1039,11 +1035,12 @@ namespace snapshot_container {
             if (not m_kernel)
                 return *this;
 
-            if (incr == 1 && m_kernel->get_update_count() == m_update_count && m_current_slice) 
+            if (incr == 1 && m_kernel->get_update_count() == m_update_count) 
             {
                 // the state of the underlying container has not changed since the last modification to the iterator
                 // thus cached state can be used to determine next iter position.
-                if (m_current_slice->size() > m_iter_pos.index() + 1) 
+                auto& current_slice = m_kernel->m_slices[m_iter_pos.slice()];
+                if (current_slice.size() > m_iter_pos.index() + 1) 
                 {
                     m_iter_pos = slice_point(m_iter_pos.slice(), m_iter_pos.index() + 1);
                     m_container_index += 1;
@@ -1052,8 +1049,7 @@ namespace snapshot_container {
                 // move to next slice or to end pos            
                 if (m_iter_pos.slice() < m_kernel->m_slices.size() - 1)
                 {
-                    m_iter_pos = slice_point(m_iter_pos.slice() + 1, 0);                    
-                    m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
+                    m_iter_pos = slice_point(m_iter_pos.slice() + 1, 0);                                        
                 }
                 else
                 {
@@ -1062,14 +1058,11 @@ namespace snapshot_container {
                 m_container_index += 1;
                 return *this;    
             }
-
-            m_current_slice = nullptr;                       
+      
             m_update_count = m_kernel->get_update_count();
             m_iter_pos = m_kernel->slice_index(m_container_index + incr);
-            if (m_iter_pos.slice() < m_kernel->m_slices.size())
-                m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
             
-            if (m_current_slice)
+            if (m_iter_pos.slice() < m_kernel->m_slices.size())
                 m_container_index += incr;
             else
                 m_container_index = m_kernel->size();
@@ -1089,7 +1082,7 @@ namespace snapshot_container {
             if (not m_kernel)
                 return *this;
 
-            if (decr == 1 && m_kernel->get_update_count() == m_update_count && m_current_slice) 
+            if (decr == 1 && m_kernel->get_update_count() == m_update_count) 
             {
                 if (m_iter_pos.index() > 0) 
                 {
@@ -1100,8 +1093,7 @@ namespace snapshot_container {
 
                 if (m_iter_pos.slice() > 0) 
                 {
-                    m_iter_pos = slice_point(m_iter_pos.slice() - 1, m_kernel->m_slices[m_iter_pos.slice() - 1].size() - 1);
-                    m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
+                    m_iter_pos = slice_point(m_iter_pos.slice() - 1, m_kernel->m_slices[m_iter_pos.slice() - 1].size() - 1);                    
                 } else 
                 {
                     *this = _iterator();
@@ -1109,9 +1101,7 @@ namespace snapshot_container {
                 m_container_index -= 1;
                 return *this;
             }
-
-            m_current_slice = nullptr;
-            
+                        
             // this is decrementing to before the first element. This is an invalid state but it can
             // occur in reverse iteration loops.
             if (decr > m_container_index)
@@ -1122,10 +1112,7 @@ namespace snapshot_container {
             }
                 
             m_update_count = m_kernel->get_update_count();
-            m_iter_pos = m_kernel->slice_index(m_container_index - decr);
-            if (m_iter_pos.slice() < m_kernel->m_slices.size())
-                m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
-            
+            m_iter_pos = m_kernel->slice_index(m_container_index - decr);            
             m_container_index -= decr;
             return *this;
         }
@@ -1135,10 +1122,13 @@ namespace snapshot_container {
             if (not m_kernel)
                 throw std::logic_error("Invalid iterator dereference (no kernel)");
             
-            if (m_update_count == m_kernel->get_update_count() && m_current_slice && m_current_slice->m_storage.use_count() == 1)
-                return (*m_current_slice)[m_iter_pos.index()];
-                           
-            m_current_slice = nullptr;            
+            if (m_update_count == m_kernel->get_update_count())
+            {
+                auto& current_slice = m_kernel->m_slices[m_iter_pos.slice()];
+                if (current_slice.m_storage.use_count() == 1)                
+                    return current_slice[m_iter_pos.index()];
+            }
+            
             if (m_container_index == npos)
                 throw std::logic_error("Invalid iterator dereference (npos)");
             
@@ -1156,18 +1146,13 @@ namespace snapshot_container {
             if (m_iter_pos == m_kernel->end())
                 throw std::logic_error("Invalid iterator dereference (end)");
             
-            m_current_slice = &m_kernel->m_slices[m_iter_pos.slice()];
-            return (*m_current_slice)[m_iter_pos.index()];
+            return m_kernel->m_slices[m_iter_pos.slice()][m_iter_pos.index()];
         }
-         
-        
-        // This is too big to fit into a virtual_iter<T,48> type which presents problems from
-        // wrapping this into a cache line efficient type erased iterator type. 
-        mutable slice_t* m_current_slice;
-        mutable size_t m_update_count;
-        mutable size_t m_container_index;
-        mutable slice_point m_iter_pos;        
+              
         std::shared_ptr<iterator_kernel_t> m_kernel;
+        mutable slice_point m_iter_pos;             
+        mutable size_t m_update_count;
+        mutable size_t m_container_index;                   
     };
 
     
