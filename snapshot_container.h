@@ -34,6 +34,7 @@ namespace snapshot_container
     template <typename T, typename StorageCreator=deque_storage_creator<T>, typename ConfigTraits=_iterator_kernel_config_traits>
     class snapshot;
     
+    
     template <typename T, typename StorageCreator=deque_storage_creator<T>, typename ConfigTraits=_iterator_kernel_config_traits>
     class container
     {
@@ -50,7 +51,9 @@ namespace snapshot_container
         typedef T* pointer;
         typedef T& reference;
         typedef T value_type;
+        
         typedef container<T, StorageCreator, ConfigTraits> container_t;
+        typedef snapshot<T, StorageCreator, ConfigTraits> snapshot_t;
         
         container():
             m_kernel(kernel_t::create(storage_creator_t()))
@@ -89,6 +92,11 @@ namespace snapshot_container
         
         container_t& operator=(container_t && rhs) = default;     
         ~container() {}
+        
+
+        // construction from a snapshot.
+        container (const snapshot_t& rhs); // must be defined after snapshot is defined. see below.
+        container& operator=(const snapshot_t& rhs);
                 
         iterator begin() {return iterator(m_kernel, 0);}
         iterator end() {return iterator(m_kernel, size());}
@@ -194,9 +202,87 @@ namespace snapshot_container
         // TODO: Improve std::vector compat. Support for emplace, emplace_back etc. Will require some thought.
         // TODO: Reverse iterators
         
+        snapshot_t create_snapshot();        
     private:
         shared_kernel_t m_kernel;
     };    
+
+    
+    template <typename T, typename StorageCreator, typename ConfigTraits> 
+    class snapshot 
+    {
+    public:            
+        
+        friend class container<T, StorageCreator, ConfigTraits>;
+        typedef container<T, StorageCreator, ConfigTraits> container_t;
+        
+        typedef StorageCreator storage_creator_t;
+        typedef _iterator_kernel<T, StorageCreator, ConfigTraits> kernel_t;
+        typedef typename kernel_t::fwd_iter_type fwd_iter_type;
+        typedef typename kernel_t::rand_iter_type rand_iter_type;
+        typedef typename kernel_t::const_iterator const_iterator;
+        typedef std::shared_ptr<kernel_t> shared_kernel_t;
+        typedef size_t size_type;
+        typedef ssize_t difference_type;
+        typedef T const* pointer;
+        typedef T const& reference;
+        typedef T value_type;
+        
+        snapshot() = default;        
+        snapshot(const snapshot& rhs) = default;
+        snapshot& operator = (const snapshot& rhs) = default;        
+        snapshot(snapshot && rhs) = default;
+        snapshot& operator=(snapshot&& rhs) = default;
+                
+        reference operator[](size_t index) const {return (*m_kernel)[index];}
+        size_type size() const {return m_kernel->size();}        
+        void swap(snapshot& other) noexcept
+        {
+            m_kernel->swap(other->m_kernel);
+        }
+        
+        bool empty() const noexcept
+        {
+            return m_kernel->size() == 0;
+        }        
+        
+        const_iterator begin() const {return const_iterator(m_kernel, 0);}
+        const_iterator end() const {return const_iterator(m_kernel, size());}        
+        
+    private:
+        
+        snapshot(const shared_kernel_t& rhs)
+        {
+            // shallow copy. The outer shared pointers are independent but
+            // all the internal shared pointers are shared. This is how the
+            // container type constructs a snapshot.
+            *m_kernel = *rhs.m_kernel;
+        }
+                
+        shared_kernel_t m_kernel;
+    };
+
+
+    template <typename T, typename StorageCreator, typename ConfigTraits> 
+    auto container<T, StorageCreator, ConfigTraits>::create_snapshot() -> snapshot_t
+    {
+        return snapshot_t(m_kernel);
+    }
+        
+    
+    template <typename T, typename StorageCreator, typename ConfigTraits>
+    container<T, StorageCreator, ConfigTraits>::container(const snapshot_t& rhs)
+    {
+        m_kernel->deepcopy(rhs.m_kernel);
+    }
+    
+    
+    template <typename T, typename StorageCreator, typename ConfigTraits>
+    auto container<T, StorageCreator, ConfigTraits>::operator=(const snapshot_t& rhs) -> container_t&
+    {
+        m_kernel->deep_copy(rhs.m_kernel);
+        return *this;
+    }           
 }
 
 
