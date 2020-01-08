@@ -46,6 +46,8 @@ TEST_CASE("Snapshot does not change when container is updated", "[container]")
     container.insert(container.begin() + 512, vec2.begin(), vec2.end());
     REQUIRE(container.size() == 2048);
     REQUIRE(std::equal(snapshot.begin(), snapshot.end(), vec.begin()));
+    REQUIRE(std::equal(snapshot.begin(), snapshot.begin() + 512, container.begin()));
+    REQUIRE(std::equal(snapshot.begin() + 512, snapshot.end(), container.begin() + 1536));
     container.clear();
     REQUIRE(std::equal(snapshot.begin(), snapshot.end(), vec.begin()));
 
