@@ -34,11 +34,20 @@ using container_t = snapshot_container::container<T>;
 
 TEST_CASE("Snapshot does not change when container is updated", "[container]")
 {
-    auto vec = std::vector<int>(1024, 0xdeadbef);
+    auto vec = std::vector<int>(1024, 0xdeadbeef);
     auto container = container_t<int>(vec.begin(), vec.end());
     REQUIRE(std::equal(container.begin(), container.end(), vec.begin()));
     auto snapshot = container.create_snapshot();
     REQUIRE(std::equal(snapshot.begin(), snapshot.end(), vec.begin()));
     REQUIRE(std::equal(snapshot.begin(), snapshot.end(), container.cbegin()));
+
+    // insert into the container. Snapshot should not change
+    auto vec2 = std::vector<int>(1024, 0xcafef00d);
+    container.insert(container.begin() + 512, vec2.begin(), vec2.end());
+    REQUIRE(container.size() == 2048);
+    REQUIRE(std::equal(snapshot.begin(), snapshot.end(), vec.begin()));
+    container.clear();
+    REQUIRE(std::equal(snapshot.begin(), snapshot.end(), vec.begin()));
+
 }
 
