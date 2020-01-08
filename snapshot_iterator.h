@@ -671,6 +671,11 @@ namespace snapshot_container {
             rhs.m_cum_slice_lengths = lengths;
         }
 
+        storage_creator_t& get_storage_creator() const
+        {
+            return m_storage_creator;
+        }
+
 #ifndef _SNAPSHOTCONTAINER_TEST
         private:
 #endif
@@ -700,7 +705,7 @@ namespace snapshot_container {
 
         std::vector<slice_t> m_slices;
         std::vector<size_t> m_cum_slice_lengths;
-        storage_creator_t m_storage_creator;
+        mutable storage_creator_t m_storage_creator;
         size_t m_update_count = 0; // indicator to iterators that state changed
     };
 

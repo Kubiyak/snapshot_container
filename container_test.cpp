@@ -21,31 +21,24 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-
+#define CATCH_CONFIG_MAIN
 #include <vector>
 #include "snapshot_container.h"
+#include "catch.hpp"
+#include <algorithm>
+
 
 template <typename T>
 using container_t = snapshot_container::container<T>;
 
-int main()
+
+TEST_CASE("Snapshot does not change when container is updated", "[container]")
 {
-    // quick compile check for now. I will add tests based on the libcxx vector and deque tests
-    // to test this.
-    auto container = container_t<int>();
-    auto data =std::vector<int>(10, 0xdeadbeef);
-    // TODO: Hide this in the insert logic itself if possible
-    auto impl = virtual_iter::std_iter_impl_creator::create(data);
-    auto begin_pos = virtual_iter::rand_iter<int, 48>(impl, data.begin());
-    auto end_pos = virtual_iter::rand_iter<int, 48>(impl, data.end());
-    container.insert(container.end(), begin_pos, end_pos);
-    
-    auto impl2 = virtual_iter::std_iter_impl_creator::create(data.begin());
-    auto begin_pos2 = virtual_iter::rand_iter<int, 48>(impl2, data.begin());
-    auto end_pos2 = virtual_iter::rand_iter<int, 48>(impl2, data.end());
-    container.insert(container.end(), begin_pos2, end_pos2);
-    
-    container.insert(container.end(), data.begin(), data.end());
-    
-    return 0;
+    auto vec = std::vector<int>(1024, 0xdeadbef);
+    auto container = container_t<int>(vec.begin(), vec.end());
+    REQUIRE(std::equal(container.begin(), container.end(), vec.begin()));
+    auto snapshot = container.create_snapshot();
+    REQUIRE(std::equal(snapshot.begin(), snapshot.end(), vec.begin()));
+    REQUIRE(std::equal(snapshot.begin(), snapshot.end(), container.cbegin()));
 }
+
