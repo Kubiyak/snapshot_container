@@ -193,7 +193,7 @@ namespace snapshot_container
             // doing it this way will not suddenly switch which of this or other that
             // iterators reference.
             // TODO: ensure std::swap works correctly on these types.
-            m_kernel->swap(other->m_kernel);
+            m_kernel->swap(*other.m_kernel);
         }
 
         bool empty() const noexcept

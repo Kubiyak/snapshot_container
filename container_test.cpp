@@ -50,6 +50,18 @@ TEST_CASE("Snapshot does not change when container is updated", "[container]")
     REQUIRE(std::equal(snapshot.begin() + 512, snapshot.end(), container.begin() + 1536));
     container.clear();
     REQUIRE(std::equal(snapshot.begin(), snapshot.end(), vec.begin()));
-
 }
+
+
+TEST_CASE("Container ops", "[container]")
+{
+    auto vec = std::vector<int>(1024, 0xdeadbeef);
+    auto container = container_t<int>(vec.begin(), vec.end());
+    auto container2 = container_t<int>();
+
+    container2.swap(container);
+    REQUIRE(std::equal(container2.begin(), container2.end(), vec.begin()));
+    REQUIRE(container.empty());
+}
+
 
