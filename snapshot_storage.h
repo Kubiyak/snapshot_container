@@ -7,6 +7,7 @@
  **********************************************************************************************************************/
 #pragma  once
 
+#include <atomic>
 #include "virtual_std_iter.h"
 
 namespace snapshot_container
@@ -48,6 +49,8 @@ namespace snapshot_container
 
         virtual value_type& operator[](size_t index) = 0;
 
+        virtual size_t id() const = 0;
+                
         virtual ~storage_base()
         {}
 
@@ -63,8 +66,20 @@ namespace snapshot_container
         // Must create this via a derivation.
         storage_base()
         {}
+    
+        // Each storage element created can be given a unique id.
+        static size_t generate_storage_id();
     };
 
+    
+    template <typename T, size_t MemSize, typename StorageIterType>
+    size_t storage_base<T, MemSize, StorageIterType>::generate_storage_id()
+    {
+        // This static construction is guaranteed thread safe in modern c++
+        static std::atomic<size_t> counter = 0;
+        return ++counter;
+    }
+    
     
     // This is just an example of what an implementation of storage_base<T> can look like.
     // In general, it could be just about anything supporting the storage_base<T> interface. For example it can be
@@ -182,30 +197,43 @@ namespace snapshot_container
             return storage_iter_type(_iter_impl, m_data.begin() + offset);
         }
 
+        size_t id() const override
+        {
+            return m_storage_id;
+        }
+        
         static shared_base_t create();
 
         template <typename InputIter>
         static shared_base_t create(InputIter start_pos, InputIter end_pos);
        
-        deque_storage(const deque_storage<T>& rhs) = default;
-       
+        // The copy constructors should never be called. All construction is through the storage creator mechanism
+        deque_storage(const deque_storage<T>& rhs) = delete;
+        deque_storage(deque_storage<T>&& rhs) = delete;
+                        
     private:
         
-        deque_storage() {}        
+        deque_storage():
+        m_storage_id(storage_base_t::generate_storage_id())
+        {}
         
         template <typename InputIter>
         deque_storage(InputIter start_pos, InputIter end_pos);
         
         static virtual_iter::std_rand_iter_impl<typename std::deque<value_type>::const_iterator, iter_mem_size> _iter_impl;        
         std::deque<T> m_data;
+        size_t m_storage_id;
     };
 
+    
     template <typename T>
     template <typename InputIter>
-    deque_storage<T>::deque_storage(InputIter start_pos, InputIter end_pos) :
-            m_data (start_pos, end_pos)
+    deque_storage<T>::deque_storage(InputIter start_pos, InputIter end_pos):
+        m_data (start_pos, end_pos),
+        m_storage_id(storage_base_t::generate_storage_id())
     {}
 
+    
     template <typename T>
     typename deque_storage<T>::shared_base_t deque_storage<T>::copy(size_t start_index, size_t end_index) const
     {
@@ -216,12 +244,14 @@ namespace snapshot_container
         return deque_storage<T>::shared_base_t (new_storage);
     }
 
+    
     template <typename T>
     typename deque_storage<T>::shared_base_t deque_storage<T>::create()
     {
         return shared_base_t (new deque_storage<T> ());
     }
 
+    
     template <typename T>
     template <typename InputItr>
     typename deque_storage<T>::shared_base_t deque_storage<T>::create(InputItr start_pos, InputItr end_pos)
@@ -230,6 +260,7 @@ namespace snapshot_container
         return shared_base_t (storage);
     }
 
+    
     template <typename T>
     virtual_iter::std_rand_iter_impl<typename std::deque<T>::const_iterator, deque_storage<T>::iter_mem_size> deque_storage<T>::_iter_impl;
 

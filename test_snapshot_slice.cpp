@@ -18,12 +18,11 @@
 
 using snapshot_container::_iterator_kernel;
 using snapshot_container::deque_storage_creator;
-using snapshot_container::_iterator;
 using config_traits = snapshot_container::_iterator_kernel_config_traits;
 
 template class deque_storage_creator<int>;
 template class _iterator_kernel<int, deque_storage_creator<int>>;
-template class _iterator<int, deque_storage_creator<int>>;
+using _iterator = _iterator_kernel<int, deque_storage_creator<int>>::iterator;
 
 
 auto test_ik_creator(size_t num_slices, size_t num_values_per_slice)
@@ -158,11 +157,11 @@ TEST_CASE("remove tests", "[iterator_kernel]") {
 TEST_CASE("basic iterator tests", "[iterator_kernel]") {
  
     auto [ik, test_values] = test_ik_creator(1, 2048);   
-    auto end_itr = _iterator<int, deque_storage_creator<int>>(ik, ik->end());
-    auto itr = _iterator<int, deque_storage_creator<int>>(ik, ik->end());
+    auto end_itr = _iterator(ik, ik->end());
+    auto itr = _iterator(ik, ik->begin());
     REQUIRE(std::equal(itr, end_itr, test_values.begin()));
 
-    itr = _iterator<int, deque_storage_creator<int>>(ik, ik->begin());
+    itr = _iterator(ik, ik->begin());
     auto itr2 = itr + 5;
     
     REQUIRE(*itr2 == test_values[5]);
@@ -248,7 +247,7 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
             auto insert_index = ik->container_index(insert_point);
             ik->insert(insert_point, 0xdeadbeef);
             REQUIRE(ik->m_cum_slice_lengths[0] == insert_pos);
-            auto itr = _iterator<int, deque_storage_creator<int>>(ik, ik->slice_index(insert_index));            
+            auto itr = _iterator(ik, ik->slice_index(insert_index));            
 
             // force non-const iterator access which will force a copy on write            
             *(itr - 1) += 1;
@@ -268,7 +267,7 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
         ik->insert(insert_point, 1024);
         
         auto iter_point = insert_index + 1;
-        auto itr = _iterator<int, deque_storage_creator<int>>(ik, ik->slice_index(iter_point));
+        auto itr = _iterator(ik, ik->slice_index(iter_point));
         auto value = *itr;
         REQUIRE(value == insert_index);        
         REQUIRE(*(itr - 1) == 1024);
@@ -282,7 +281,7 @@ TEST_CASE("complex merge and insert tests", "[iterator kernel]") {
         auto insert_index = ik->container_index(insert_point);
         ik->insert(insert_point, 5019); // some value distinct from what is already there
         auto iter_point = insert_index + 1;
-        auto itr = _iterator<int, deque_storage_creator<int>>(ik, ik->slice_index(iter_point));        
+        auto itr = _iterator(ik, ik->slice_index(iter_point));        
         auto value = *itr;
         REQUIRE(value == insert_index);
         REQUIRE(*(itr - 1) == 5019);

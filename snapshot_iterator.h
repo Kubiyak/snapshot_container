@@ -676,6 +676,14 @@ namespace snapshot_container {
             return m_storage_creator;
         }
 
+        std::vector<size_t> storage_ids() const
+        {
+            std::vector<size_t> result(m_slices.size());
+            for (auto& slice: m_slices)
+                result.push_back(slice.id());
+            return result;
+        }
+        
 #ifndef _SNAPSHOTCONTAINER_TEST
         private:
 #endif
@@ -977,7 +985,7 @@ namespace snapshot_container {
             return const_cast<const _iterator&> (const_cast<_iterator*> (this)->_prefix_plusplus_impl(incr));
         }
 
-        _iterator& _prefix_minusminus_impl(ssize_t decr = 1) const {
+        _iterator& _prefix_minusminus_impl(ssize_t decr = 1)  {
             if (not m_kernel)
                 return *this;
 
@@ -996,7 +1004,7 @@ namespace snapshot_container {
                 m_container_index -= 1;
                 return *this;
             }
-
+                        
             // this is decrementing to before the first element. This is an invalid state but it can
             // occur in reverse iteration loops.
             if (decr > m_container_index) {
@@ -1011,6 +1019,10 @@ namespace snapshot_container {
             return *this;
         }
 
+        const _iterator& _prefix_minusminus_impl(difference_type decr = 1) const {
+            return const_cast<const _iterator&> (const_cast<_iterator*> (this)->_prefix_minusminus_impl(decr));
+        }
+        
         reference _dereference_impl() const {
             if (not m_kernel)
                 throw std::logic_error("Invalid iterator dereference (no kernel)");

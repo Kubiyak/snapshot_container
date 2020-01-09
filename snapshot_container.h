@@ -255,6 +255,20 @@ namespace snapshot_container
         const_iterator begin() const {return const_iterator(m_kernel, 0);}
         const_iterator end() const {return const_iterator(m_kernel, size());}
 
+        // snapshots provide access to the storage creator object and storage ids of storage
+        // elements. This is to provide support for doing things like interfacing snapshots to buffer objects
+        // in python efficiently. Theoretically, user code could do this without support from snapshots anyway
+        // so these features are provided as a convenience.
+        std::vector<size_t> storage_ids() const
+        {
+            return m_kernel->storage_ids();
+        }
+        
+        storage_creator_t& get_storage_creator() const
+        {
+            return m_kernel->get_storage_creator();
+        } 
+        
     private:
 
         snapshot(const shared_kernel_t& rhs):

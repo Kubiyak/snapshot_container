@@ -171,6 +171,11 @@ namespace snapshot_container
             return (m_start_index == rhs.m_start_index && m_end_index == rhs.m_end_index && m_storage == rhs.m_storage);
         }
         
+        size_t id() const
+        {
+            return m_storage->id();
+        }
+        
         size_t m_start_index;
         size_t m_end_index;
         shared_base_t m_storage;
