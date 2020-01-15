@@ -263,13 +263,13 @@ namespace snapshot_container
         {
             return m_kernel->storage_ids();
         }
-        
+
         storage_creator_t& get_storage_creator() const
         {
             return m_kernel->get_storage_creator();
-        } 
-        
-    private:
+        }
+
+    protected:
 
         snapshot(const shared_kernel_t& rhs):
         m_kernel(kernel_t::create(rhs->get_storage_creator()))
