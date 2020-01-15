@@ -205,7 +205,7 @@ namespace snapshot_container
         // TODO: Reverse iterators
 
         snapshot_t create_snapshot();
-    private:
+    protected:
         shared_kernel_t m_kernel;
     };
 
